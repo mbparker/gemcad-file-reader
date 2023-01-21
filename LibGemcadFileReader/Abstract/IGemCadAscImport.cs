@@ -1,9 +1,9 @@
-using LibGemcadFileReader.Models.Geometry.Primitive;
+using LibGemcadFileReader.Models.Geometry;
 
 namespace LibGemcadFileReader.Abstract
 {
     public interface IGemCadAscImport
     {
-        PolygonContainer Import(string filename);
+        GemCadFileData Import(string filename);
     }
 }

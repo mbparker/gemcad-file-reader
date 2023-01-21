@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using LibGemcadFileReader.Abstract;
+using LibGemcadFileReader.Models.Geometry;
 using LibGemcadFileReader.Models.Geometry.Primitive;
 
 namespace LibGemcadFileReader.Concrete
@@ -77,13 +78,14 @@ namespace LibGemcadFileReader.Concrete
             this.logger = logger;
         }
 
-        public PolygonContainer Import(string filename)
+        public GemCadFileData Import(string filename)
         {
             var data = ParseBinaryData(filename);
-            return BuildModel(data);
+            BuildModel(data);
+            return data;
         }
 
-        private GemCadBinaryFileData ParseBinaryData(string filename)
+        private GemCadFileData ParseBinaryData(string filename)
         {
             logger.Debug($"[GEMIMPORT] Begin parsing Gemcad GEM file: {filename}");
             using (var stream = fileOperations.CreateFileStream(filename, FileMode.Open))
@@ -95,56 +97,62 @@ namespace LibGemcadFileReader.Concrete
             }
         }
 
-        private PolygonContainer BuildModel(GemCadBinaryFileData parsedData)
+        private void BuildModel(GemCadFileData parsedData)
         {
-            var result = new PolygonContainer();
-
-            for (int i = 0; i < parsedData.TierIndexRecords.Count; i++)
+            for (int i = 0; i < parsedData.Tiers.Count; i++)
             {
-                for (int j = 1; j < parsedData.TierIndexRecords[i].Points.Count - 1; j++)
+                for (int j = 0; j < parsedData.Tiers[i].Indices.Count; j++)
                 {
-                    var triangle = new Triangle();
-                    triangle.P1 = new PolygonVertex(parsedData.TierIndexRecords[i].Points[0]);
-                    triangle.P2 = new PolygonVertex(parsedData.TierIndexRecords[i].Points[j]);
-                    triangle.P3 = new PolygonVertex(parsedData.TierIndexRecords[i].Points[j + 1]);
-
-                    // Don't assume the winding is correct, because it's probably not for half the polys.
-                    // Check both directions, and take the normal with the end furthest from 0,0,0
-                    var normal1 =
-                        vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex, triangle.P3.Vertex);
-                    var normalEnd1 = vectorOperations.Add(normal1, triangle.P1.Vertex);
-                    var dist1 = geometryOperations.Length3d(normalEnd1, new Vertex3D());
-
-                    var normal2 =
-                        vectorOperations.CalculateNormal(triangle.P3.Vertex, triangle.P2.Vertex, triangle.P1.Vertex);
-                    var normalEnd2 = vectorOperations.Add(normal2, triangle.P1.Vertex);
-                    var dist2 = geometryOperations.Length3d(normalEnd2, new Vertex3D());
-
-                    //logger.Debug($"[GEMIMPORT] N1D={dist1} N2D={dist2}");
-
-                    if (Math.Abs(dist2) > Math.Abs(dist1))
+                    for (int k = 1; k < parsedData.Tiers[i].Indices[j].Points.Count - 1; k++)
                     {
-                        triangle.Reverse();
-                        triangle.Normal = normal2;
-                    }
-                    else
-                    {
-                        triangle.Normal = normal1;
-                    }
+                        var triangle = new Triangle();
+                        triangle.P1 = new PolygonVertex(parsedData.Tiers[i].Indices[j].Points[0]);
+                        triangle.P2 = new PolygonVertex(parsedData.Tiers[i].Indices[j].Points[k]);
+                        triangle.P3 = new PolygonVertex(parsedData.Tiers[i].Indices[j].Points[k + 1]);
 
-                    triangle.P1.Normal = triangle.Normal;
-                    triangle.P2.Normal = triangle.Normal;
-                    triangle.P3.Normal = triangle.Normal;
-                    result.Add(triangle);
+                        // Don't assume the winding is correct, because it's probably not for half the polys.
+                        // Check both directions, and take the normal with the end furthest from 0,0,0
+                        var normal1 =
+                            vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex,
+                                triangle.P3.Vertex);
+                        var normalEnd1 = vectorOperations.Add(normal1, triangle.P1.Vertex);
+                        var dist1 = geometryOperations.Length3d(normalEnd1, new Vertex3D());
+
+                        var normal2 =
+                            vectorOperations.CalculateNormal(triangle.P3.Vertex, triangle.P2.Vertex,
+                                triangle.P1.Vertex);
+                        var normalEnd2 = vectorOperations.Add(normal2, triangle.P1.Vertex);
+                        var dist2 = geometryOperations.Length3d(normalEnd2, new Vertex3D());
+
+                        //logger.Debug($"[GEMIMPORT] N1D={dist1} N2D={dist2}");
+
+                        if (Math.Abs(dist2) > Math.Abs(dist1))
+                        {
+                            triangle.Reverse();
+                            triangle.Normal = normal2;
+                        }
+                        else
+                        {
+                            triangle.Normal = normal1;
+                        }
+
+                        triangle.P1.Normal = triangle.Normal;
+                        triangle.P2.Normal = triangle.Normal;
+                        triangle.P3.Normal = triangle.Normal;
+                        parsedData.RenderingTriangles.Add(triangle);
+                    }
+                    
                 }
             }
-
-            return result;
         }
 
-        private GemCadBinaryFileData ParseBinaryData(BinaryReader reader)
+        private GemCadFileData ParseBinaryData(BinaryReader reader)
         {
-            var parsedData = new GemCadBinaryFileData();
+            var currentTier = new GemCadFileTierData();
+            currentTier.Number = 1;
+            var indexPoints = new List<Vertex3D>();
+            var indices = new List<GemCadFileTierIndexData>();
+            var parsedData = new GemCadFileData();
 
             while (reader.BaseStream.Position < reader.BaseStream.Length - 3)
             {
@@ -159,15 +167,15 @@ namespace LibGemcadFileReader.Concrete
                     logger.Debug(
                         $"[GEMIMPORT] Parsing trailer record at offset {reader.BaseStream.Position.ToString("X8")}");
                     logger.Debug($"[GEMIMPORT] Unknown2 = {BitConverter.ToString(unknown2)}");
-                    parsedData.TrailerSection.Unknown1 = unknown1;
-                    parsedData.TrailerSection.Unknown2 = unknown2;
-                    parsedData.TrailerSection.Unknown3 = unknown3;
-                    parsedData.TrailerSection.Unknown4 = unknown4;
-                    parsedData.TrailerSection.Gear = reader.ReadInt32();
-                    parsedData.TrailerSection.RIndex = ValidateDouble(reader.ReadDouble());
-                    parsedData.TrailerSection.Unknown5 =
+                    parsedData.Metadata.Unknown1 = unknown1;
+                    parsedData.Metadata.Unknown2 = unknown2;
+                    parsedData.Metadata.Unknown3 = unknown3;
+                    parsedData.Metadata.Unknown4 = unknown4;
+                    parsedData.Metadata.Gear = reader.ReadInt32();
+                    parsedData.Metadata.Index = ValidateDouble(reader.ReadDouble());
+                    parsedData.Metadata.Unknown5 =
                         reader.ReadInt32(); // Unknown - but seems to be same in all files
-                    parsedData.TrailerSection.GearLocation = ValidateDouble(reader.ReadDouble());
+                    parsedData.Metadata.GearLocationAngle = ValidateDouble(reader.ReadDouble());
 
                     logger.Debug("[GEMIMPORT] Parsing trailer section text lines");
                     var textLines = new List<string>();
@@ -184,12 +192,12 @@ namespace LibGemcadFileReader.Concrete
                     {
                         if (textLines.Count > 1)
                         {
-                            parsedData.TrailerSection.Headers = textLines.Take(textLines.Count - 1).ToArray();
-                            parsedData.TrailerSection.Footer = textLines.Last();
+                            parsedData.Metadata.Headers = textLines.Take(textLines.Count - 1).ToList();
+                            parsedData.Metadata.Footer = textLines.Last();
                         }
                         else
                         {
-                            parsedData.TrailerSection.Headers = textLines.ToArray();
+                            parsedData.Metadata.Headers = textLines.ToList();
                         }
                     }
                 }
@@ -199,8 +207,8 @@ namespace LibGemcadFileReader.Concrete
 
                     logger.Debug(
                         $"[GEMIMPORT] Parsing tier index record at offset {reader.BaseStream.Position.ToString("X8")}");
-                    var rec = new TierIndexRecord();
-                    rec.Normal = Read3DPoint(reader, out int eodMarker);
+                    var rec = new GemCadFileTierIndexData();
+                    rec.FacetNormal = Read3DPoint(reader, out int eodMarker);
                     rec.Tier = eodMarker;
                     var offset = reader.BaseStream.Position;
                     var text = ReadAnsiString(reader, true).Split('\t');
@@ -221,11 +229,28 @@ namespace LibGemcadFileReader.Concrete
                     while (eodMarker > 0)
                     {
                         var pt = Read3DPoint(reader, out eodMarker);
-                        rec.Points.Add(pt);
+                        indexPoints.Add(pt);
+                    }
+                    
+                    if (currentTier.Number != rec.Tier)
+                    {
+                        currentTier.Indices = indices.ToList();
+                        parsedData.Tiers.Add(currentTier);
+                        indices.Clear();
+                        currentTier = new GemCadFileTierData();
+                        currentTier.Number = rec.Tier;
                     }
 
-                    parsedData.TierIndexRecords.Add(rec);
+                    rec.Points = indexPoints.ToList();
+                    indices.Add(rec);
+                    indexPoints.Clear();
                 }
+            }
+
+            if (indices.Any())
+            {
+                currentTier.Indices = indices.ToList();
+                parsedData.Tiers.Add(currentTier);                
             }
             
             return parsedData;
@@ -268,35 +293,6 @@ namespace LibGemcadFileReader.Concrete
         private int ReadEodMarker(BinaryReader reader)
         {
             return reader.ReadInt32();
-        }
-
-        private class GemCadBinaryFileData
-        {
-            public List<TierIndexRecord> TierIndexRecords { get; set; } = new List<TierIndexRecord>();
-            public HeaderAndFooterRecord TrailerSection { get; set; } = new HeaderAndFooterRecord();
-        }
-
-        private class TierIndexRecord
-        {
-            public int Tier { get; set; }
-            public Vertex3D Normal { get; set; } = new Vertex3D();
-            public List<Vertex3D> Points { get; set; } = new List<Vertex3D>();
-            public string Name { get; set; } = string.Empty;
-            public string CuttingInstructions { get; set; } = string.Empty;
-        }
-
-        private class HeaderAndFooterRecord
-        {
-            public int Unknown1 { get; set; }
-            public byte[] Unknown2 { get; set; }
-            public int Unknown3 { get; set; }
-            public int Unknown4 { get; set; }
-            public int Unknown5 { get; set; }
-            public int Gear { get; set; }
-            public double GearLocation { get; set; }
-            public double RIndex { get; set; }
-            public string[] Headers { get; set; }
-            public string Footer { get; set; }
         }
     }
 }

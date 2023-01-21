@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Xml;
 using LibGemcadFileReader.Abstract;
+using LibGemcadFileReader.Models.Geometry;
 using LibGemcadFileReader.Models.Geometry.Primitive;
 
 namespace LibGemcadFileReader.Concrete
@@ -26,37 +26,34 @@ namespace LibGemcadFileReader.Concrete
             this.logger = logger;
         }
 
-        public PolygonContainer Import(string filename)
+        public GemCadFileData Import(string filename)
         {
+            var result = new GemCadFileData();
             using (var stream = fileOperations.CreateFileStream(filename, FileMode.Open))
             {
                 using (var reader = new StreamReader(stream))
                 {
-                    var lineDataItems = new List<AscLineData>();
+                    int currentTier = 0;
                     while (!reader.EndOfStream)
                     {
                         var line = reader.ReadLine()?.Trim();
                         if (!string.IsNullOrWhiteSpace(line))
                         {
-                            var lineData = ProcessLine(line);
-                            if (lineData != null)
-                            {
-                                lineDataItems.Add(lineData);
-                            }
+                            ProcessLine(line, result, ref currentTier);
                         }
                     }
 
-                    if (lineDataItems.Any())
+                    if (result.Tiers.Any())
                     {
-                        return BuildGeometry(lineDataItems);
+                        BuildGeometry(result);
                     }
                 }
             }
 
-            return new PolygonContainer();
+            return result;
         }
 
-        private AscLineData ProcessLine(string line)
+        private void ProcessLine(string line, GemCadFileData fileData, ref int currentTier)
         {
             var parts = line.Split(new[] { ' ' }, StringSplitOptions.None).Select(x => x.Trim())
                 .ToArray();
@@ -66,12 +63,42 @@ namespace LibGemcadFileReader.Concrete
                 {
                     if (parts.Length == 3)
                     {
-                        if (double.TryParse(parts[1], out double gear) &&
+                        if (int.TryParse(parts[1], out int gear) &&
                             double.TryParse(parts[2], out double gearLocation))
                         {
-                            logger.Debug($"[ASCIMPORT] Read gear {gear} {gearLocation}");
-                            return new AscLineData(gear, gearLocation);
+                            logger.Debug($"[ASCIMPORT] Read gear and location {gear} {gearLocation}");
+                            fileData.Metadata.Gear = gear;
+                            fileData.Metadata.GearLocationAngle = gearLocation;
                         }
+                    }
+                }
+                else if (parts[0] == "I")
+                {
+                    if (parts.Length == 2)
+                    {
+                        if (double.TryParse(parts[1], out double index))
+                        {
+                            logger.Debug($"[ASCIMPORT] Read index {index}");
+                            fileData.Metadata.Index = index;
+                        }
+                    }
+                }
+                else if (parts[0] == "H")
+                {
+                    if (parts.Length > 1)
+                    {
+                        var header = string.Join(" ", parts.Skip(1));
+                        logger.Debug($"[ASCIMPORT] Read header {header}");
+                        fileData.Metadata.Headers.Add(header);
+                    }
+                }
+                else if (parts[0] == "F")
+                {
+                    if (parts.Length > 1)
+                    {
+                        var footer = string.Join(" ", parts.Skip(1));
+                        logger.Debug($"[ASCIMPORT] Read footer {footer}");
+                        fileData.Metadata.Footer += $" {footer}";
                     }
                 }
                 else if (parts[0] == "a")
@@ -81,84 +108,111 @@ namespace LibGemcadFileReader.Concrete
                         if (double.TryParse(parts[1], out double angle) &&
                             double.TryParse(parts[2], out double distance))
                         {
-                            logger.Debug($"[ASCIMPORT] Read angle and distance {angle} {distance}");
                             if (parts.Length > 3)
                             {
-                                var facetIndices = new List<double>();
+                                var facetIndices = new List<Tuple<string, double>>();
                                 var index = 3;
-                                while (index < parts.Length)
+                                var currentTierIndex = double.NaN;
+                                var currentCuttingInstructions = string.Empty;
+                                while(index < parts.Length)
                                 {
-                                    if (double.TryParse(parts[index], out double facetIndex))
+                                    if (parts[index] == "n")
                                     {
-                                        logger.Debug($"[ASCIMPORT] Add facet index {facetIndex}");
-                                        facetIndices.Add(facetIndex);
+                                        if (currentTierIndex > double.Epsilon)
+                                        {
+                                            facetIndices.Add(new Tuple<string, double>(parts[index + 1], currentTierIndex));
+                                            currentTierIndex = double.NaN;
+                                        }
+                                        
+                                        index += 2;
+                                    }
+                                    else if (double.TryParse(parts[index], out double facetIndex))
+                                    {
+                                        if (currentTierIndex > double.Epsilon)
+                                        {
+                                            facetIndices.Add(new Tuple<string, double>(string.Empty, currentTierIndex));
+                                        }
+                                        
+                                        currentTierIndex = facetIndex;
                                         index++;
                                     }
                                     else
                                     {
-                                        index += 2;
+                                        if (currentTierIndex > double.Epsilon)
+                                        {
+                                            facetIndices.Add(new Tuple<string, double>(string.Empty, currentTierIndex));
+                                            currentTierIndex = double.NaN;
+                                        }
+                                        
+                                        currentCuttingInstructions = string.Join(" ", parts.Skip(index));
+                                        break;
                                     }
                                 }
-
-                                return new AscLineData(angle, distance, facetIndices);
+                                
+                                if (currentTierIndex > double.Epsilon)
+                                {
+                                    facetIndices.Add(new Tuple<string, double>(string.Empty, currentTierIndex));
+                                }                                
+                                
+                                logger.Debug($"[ASCIMPORT] Read angle, distance, tier indices, and cutting instructions: {angle}, {distance}, {facetIndices.Count} indices, {currentCuttingInstructions}");
+                                var tier = new GemCadFileTierData();
+                                tier.Number = ++currentTier;
+                                tier.Angle = angle;
+                                tier.Distance = distance;
+                                for (int i = 0; i < facetIndices.Count; i++)
+                                {
+                                    var tierIndex = new GemCadFileTierIndexData();
+                                    tierIndex.Tier = currentTier;
+                                    tierIndex.Name = facetIndices[i].Item1;
+                                    tierIndex.Index = facetIndices[i].Item2;
+                                    tier.Indices.Add(tierIndex);
+                                }
+                                
+                                fileData.Tiers.Add(tier);
                             }
                         }
                     }
                 }
             }
-
-            return null;
         }
 
-        private PolygonContainer BuildGeometry(IReadOnlyList<AscLineData> facetDataItems)
+        private void BuildGeometry(GemCadFileData fileData)
         {
-            logger.Debug($"[ASCIMPORT] Build geometry from {facetDataItems.Count} tiers");
-            var result = new PolygonContainer();
-            var gearItem = facetDataItems.FirstOrDefault(x => x.Gear > double.Epsilon);
-            var facetItems = facetDataItems.Where(x => x.Indices.Any()).ToArray();
-            if (gearItem != null && facetItems.Any())
-            {
-                var cutPlanes = GenerateCutPlanes(gearItem.Gear, facetItems);
-                logger.Debug($"[ASCIMPORT] Cut Plane Count {cutPlanes.Count}");
-                var polygons = GenerateRoughCube();
-                logger.Debug($"[ASCIMPORT] Rough Polygon Count {polygons.Count}");
-                PerformCutsOnRoughCube(polygons, cutPlanes);
-                logger.Debug($"[ASCIMPORT] Cut Polygon Count {polygons.Count}");
-                ProcessPolygons(polygons, result);
-                logger.Debug($"[ASCIMPORT] Ending Triangle Count {result.Triangles.Count()}");
-                return result;
-            }
-
-            return result;
+            GenerateCutPlanes(fileData.Metadata.Gear, fileData.Tiers);
+            fileData.FacetPolygons.AddRange(GenerateRoughCube());
+            PerformCutsOnRoughCube(fileData.FacetPolygons, fileData.Tiers);
+            ProcessPolygons(fileData);
         }
 
-        private List<CuttingPlane> GenerateCutPlanes(double gear, IReadOnlyList<AscLineData> facetDataItems)
+        private void GenerateCutPlanes(double gear, IReadOnlyList<GemCadFileTierData> tiers)
         {
-            var result = new List<CuttingPlane>();
-
-            for (int i = 0; i < facetDataItems.Count; i++)
+            //var result = new List<CuttingPlane>();
+            
+            for (int i = 0; i < tiers.Count; i++)
             {
-                var facetData = facetDataItems[i];
-                double alpha = facetData.Angle * Math.PI / 180.0;
-                double distance = facetData.Distance;
+                var tier = tiers[i];
+                double alpha = tier.Angle * Math.PI / 180.0;
+                double distance = tier.Distance;
                 int sg = Math.Sign(alpha);
                 if (sg == 0) sg = 1;
-
-                for (int j = 0; j < facetData.Indices.Count; j++)
+                
+                for (int j = 0; j < tier.Indices.Count; j++)
                 {
-                    double beta = facetData.Indices[j] / gear * Math.PI * 2;
+                    double beta = tier.Indices[j].Index / gear * Math.PI * 2;
                     double x = distance * Math.Sin(alpha) * Math.Cos(beta);
                     double y = distance * Math.Sin(alpha) * Math.Sin(beta);
                     double z = sg * distance * Math.Cos(alpha);
 
-                    var plane = new CuttingPlane();
-                    plane.Point = new Vertex3D(x, y, z);
-                    plane.NormalVector = plane.Point.Clone<Vertex3D>();
-                    result.Add(plane);
+                    //var plane = new CuttingPlane();
+                    //plane.Point = new Vertex3D(x, y, z);
+                    //plane.NormalVector = plane.Point.Clone<Vertex3D>();
+                    tier.Indices[j].FacetPoint = new Vertex3D(x, y, z);
+                    tier.Indices[j].FacetNormal = new Vertex3D(x, y, z);
+                    //result.Add(plane);
                 }
             }
-
-            return result;
+            
+            //return result;
         }
 
 
@@ -304,32 +358,56 @@ namespace LibGemcadFileReader.Concrete
             quad.P1.Vertex.Z = -sizeDiv2;
         }
 
-        private void PerformCutsOnRoughCube(List<Polygon> polygons, IReadOnlyList<CuttingPlane> cutPlanes)
+        private void PerformCutsOnRoughCube(List<Polygon> polygons, IReadOnlyList<GemCadFileTierData> tiers)
         {
-            Vertex3D pt;
+            Vertex3D point;
 
-            for (int i = 0; i < cutPlanes.Count; i++)
+            for (int h = 0; h < tiers.Count; h++)
             {
-                var pl = cutPlanes[i];
-
-                var cutPoints = new List<Vertex3D>();
-                var cutPg = new Polygon(0);
-
-                for (int j = 0; j < polygons.Count; j++)
+                var tier = tiers[h];
+                for (int i = 0; i < tier.Indices.Count; i++)
                 {
-                    var pg = polygons[j];
-                    if (pg.VertexCount == 0)
-                        continue;
+                    var tierIndex = tier.Indices[i];
 
-                    var crPoints = CutPolygonByPlane(pg, pl);
+                    var cutPoints = new List<Vertex3D>();
+                    var cutPolygon = new Polygon(0);
 
-                    for (int k = 0; k < crPoints.Count; k++)
+                    for (int j = 0; j < polygons.Count; j++)
                     {
-                        pt = crPoints[k];
-                        bool alreadyExists = false;
-                        for (int l = 0; l < cutPoints.Count; l++)
+                        var currentPolygon = polygons[j];
+                        if (currentPolygon.VertexCount == 0)
+                            continue;
+
+                        var crossPoints = CutPolygonByPlane(currentPolygon, tierIndex);
+
+                        for (int k = 0; k < crossPoints.Count; k++)
                         {
-                            if (IsSamePoint(pt, cutPoints[l]))
+                            point = crossPoints[k];
+                            bool alreadyExists = false;
+                            for (int l = 0; l < cutPoints.Count; l++)
+                            {
+                                if (IsSamePoint(point, cutPoints[l]))
+                                {
+                                    alreadyExists = true;
+                                    break;
+                                }
+                            }
+
+                            if (!alreadyExists)
+                            {
+                                cutPoints.Add(new Vertex3D(point.X, point.Y, point.Z));
+                            }
+                        }
+                    }
+
+                    logger.Debug($"CutPoints = {cutPoints.Count}");
+                    for (int j = 0; j < cutPoints.Count; j++)
+                    {
+                        point = cutPoints[j];
+                        bool alreadyExists = false;
+                        for (int k = 0; k < cutPolygon.VertexCount; k++)
+                        {
+                            if (IsSamePoint(point, cutPolygon[k].Vertex))
                             {
                                 alreadyExists = true;
                                 break;
@@ -338,47 +416,28 @@ namespace LibGemcadFileReader.Concrete
 
                         if (!alreadyExists)
                         {
-                            cutPoints.Add(new Vertex3D(pt.X, pt.Y, pt.Z));
-                        }
-                    }
-                }
-
-                logger.Debug($"CutPoints = {cutPoints.Count}");
-                for (int j = 0; j < cutPoints.Count; j++)
-                {
-                    pt = cutPoints[j];
-                    bool alreadyExists = false;
-                    for (int k = 0; k < cutPg.VertexCount; k++)
-                    {
-                        if (IsSamePoint(pt, cutPg[k].Vertex))
-                        {
-                            alreadyExists = true;
-                            break;
+                            var vertex = new Vertex3D(point.X, point.Y, point.Z);
+                            cutPolygon.Add(new PolygonVertex(vertex));
                         }
                     }
 
-                    if (!alreadyExists)
+                    if (cutPolygon.VertexCount > 2)
                     {
-                        cutPg.Add(new PolygonVertex(new Vertex3D(pt.X, pt.Y, pt.Z)));
+                        cutPolygon.Normal = tierIndex.FacetNormal.Clone<Vertex3D>();
+                        ReArrangePoints(cutPolygon);
+                        polygons.Add(cutPolygon);
                     }
-                }
-
-                if (cutPg.VertexCount > 2)
-                {
-                    cutPg.Normal = pl.NormalVector.Clone<Vertex3D>();
-                    ReArrangePoints(cutPg);
-                    polygons.Add(cutPg);
                 }
             }
         }
 
-        private List<Vertex3D> CutPolygonByPlane(Polygon pg, CuttingPlane pl)
+        private List<Vertex3D> CutPolygonByPlane(Polygon pg, GemCadFileTierIndexData tierIndex)
         {
             var crossPt = new List<Vertex3D>();
             Vertex3D g0, g1, p;
             double cx, cy, cz;
-            p = pl.Point.Clone<Vertex3D>();
-            Vertex3D n = pl.NormalVector.Clone<Vertex3D>();
+            p = tierIndex.FacetPoint.Clone<Vertex3D>();
+            Vertex3D n = tierIndex.FacetNormal.Clone<Vertex3D>();
             double delta, d;
             int i = 0;
 
@@ -479,27 +538,30 @@ namespace LibGemcadFileReader.Concrete
             return crossPt;
         }
 
-        private void ProcessPolygons(List<Polygon> polygons, PolygonContainer triangles)
+        private void ProcessPolygons(GemCadFileData fileData)
         {
-            for (int i = 0; i < polygons.Count; i++)
+            for (int i = 0; i < fileData.FacetPolygons.Count; i++)
             {
-                logger.Debug($"[ASCIMPORT] Convert polygon to triangle - Point Count: {polygons[i].VertexCount}");
-                for (int j = 1; j < polygons[i].VertexCount - 1; j++)
+                logger.Debug(
+                    $"[ASCIMPORT] Convert polygon to triangle - Point Count: {fileData.FacetPolygons[i].VertexCount}");
+                for (int j = 1; j < fileData.FacetPolygons[i].VertexCount - 1; j++)
                 {
                     var triangle = new Triangle();
-                    triangle.P1 = polygons[i][0];
-                    triangle.P2 = polygons[i][j];
-                    triangle.P3 = polygons[i][j + 1];
+                    triangle.P1 = fileData.FacetPolygons[i][0];
+                    triangle.P2 = fileData.FacetPolygons[i][j];
+                    triangle.P3 = fileData.FacetPolygons[i][j + 1];
 
                     // Don't assume the winding is correct, because it's probably not for half the polys.
                     // Check both directions, and take the normal with the end furthest from 0,0,0
                     var normal1 =
-                        vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex, triangle.P3.Vertex);
+                        vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex,
+                            triangle.P3.Vertex);
                     var normalEnd1 = vectorOperations.Add(normal1, triangle.P1.Vertex);
                     var dist1 = geometryOperations.Length3d(normalEnd1, new Vertex3D());
 
                     var normal2 =
-                        vectorOperations.CalculateNormal(triangle.P3.Vertex, triangle.P2.Vertex, triangle.P1.Vertex);
+                        vectorOperations.CalculateNormal(triangle.P3.Vertex, triangle.P2.Vertex,
+                            triangle.P1.Vertex);
                     var normalEnd2 = vectorOperations.Add(normal2, triangle.P1.Vertex);
                     var dist2 = geometryOperations.Length3d(normalEnd2, new Vertex3D());
 
@@ -518,7 +580,7 @@ namespace LibGemcadFileReader.Concrete
                     triangle.P1.Normal = triangle.Normal;
                     triangle.P2.Normal = triangle.Normal;
                     triangle.P3.Normal = triangle.Normal;
-                    triangles.Add(triangle);
+                    fileData.RenderingTriangles.Add(triangle);
                 }
             }
         }
@@ -628,37 +690,6 @@ namespace LibGemcadFileReader.Concrete
                 bIsSame = true;
 
             return bIsSame;
-        }
-
-        private class CuttingPlane
-        {
-            public Vertex3D Point { get; set; } = new Vertex3D();
-
-            public Vertex3D NormalVector { get; set; } = new Vertex3D();
-        }
-
-        private class AscLineData
-        {
-            public AscLineData(double gear, double gearLocation)
-            {
-                Gear = gear;
-                GearLocation = gearLocation;
-            }
-
-            public AscLineData(double angle, double distance, IEnumerable<double> indices)
-            {
-                Gear = -1;
-                GearLocation = 0;
-                Angle = angle;
-                Distance = distance;
-                Indices.AddRange(indices);
-            }
-
-            internal double Gear { get; }
-            internal double GearLocation { get; }
-            internal double Angle { get; }
-            internal double Distance { get; }
-            internal List<double> Indices { get; } = new List<double>();
         }
     }
 }
