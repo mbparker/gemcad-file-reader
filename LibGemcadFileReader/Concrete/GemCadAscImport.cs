@@ -118,7 +118,7 @@ namespace LibGemcadFileReader.Concrete
                                 {
                                     if (parts[index] == "n")
                                     {
-                                        if (currentTierIndex > double.Epsilon)
+                                        if (!double.IsNaN(currentTierIndex))
                                         {
                                             facetIndices.Add(new Tuple<string, double>(parts[index + 1], currentTierIndex));
                                             currentTierIndex = double.NaN;
@@ -128,7 +128,7 @@ namespace LibGemcadFileReader.Concrete
                                     }
                                     else if (double.TryParse(parts[index], out double facetIndex))
                                     {
-                                        if (currentTierIndex > double.Epsilon)
+                                        if (!double.IsNaN(currentTierIndex))
                                         {
                                             facetIndices.Add(new Tuple<string, double>(string.Empty, currentTierIndex));
                                         }
@@ -138,7 +138,7 @@ namespace LibGemcadFileReader.Concrete
                                     }
                                     else
                                     {
-                                        if (currentTierIndex > double.Epsilon)
+                                        if (!double.IsNaN(currentTierIndex))
                                         {
                                             facetIndices.Add(new Tuple<string, double>(string.Empty, currentTierIndex));
                                             currentTierIndex = double.NaN;
@@ -149,7 +149,7 @@ namespace LibGemcadFileReader.Concrete
                                     }
                                 }
                                 
-                                if (currentTierIndex > double.Epsilon)
+                                if (!double.IsNaN(currentTierIndex))
                                 {
                                     facetIndices.Add(new Tuple<string, double>(string.Empty, currentTierIndex));
                                 }                                
