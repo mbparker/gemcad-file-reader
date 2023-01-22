@@ -7,9 +7,9 @@ namespace LibGemcadFileReader.Models.Geometry
     {
         public int Gear { get; set; }
         public double GearLocationAngle { get; set; }
-        public double Index { get; set; }
+        public double RefractiveIndex { get; set; }
         public List<string> Headers { get; set; } = new List<string>();
-        public string Footer { get; set; }
+        public List<string> Footnotes { get; set; } = new List<string>();
             
         // These fields are only applicable when parsing the binary format files (*.GEM)
         public int Unknown1 { get; set; }

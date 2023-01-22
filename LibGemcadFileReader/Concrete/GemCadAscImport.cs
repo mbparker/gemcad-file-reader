@@ -79,7 +79,7 @@ namespace LibGemcadFileReader.Concrete
                         if (double.TryParse(parts[1], out double index))
                         {
                             logger.Debug($"[ASCIMPORT] Read index {index}");
-                            fileData.Metadata.Index = index;
+                            fileData.Metadata.RefractiveIndex = index;
                         }
                     }
                 }
@@ -97,8 +97,8 @@ namespace LibGemcadFileReader.Concrete
                     if (parts.Length > 1)
                     {
                         var footer = string.Join(" ", parts.Skip(1));
-                        logger.Debug($"[ASCIMPORT] Read footer {footer}");
-                        fileData.Metadata.Footer += $" {footer}";
+                        logger.Debug($"[ASCIMPORT] Read footnote {footer}");
+                        fileData.Metadata.Footnotes.Add(footer);
                     }
                 }
                 else if (parts[0] == "a")
@@ -186,8 +186,6 @@ namespace LibGemcadFileReader.Concrete
 
         private void GenerateCutPlanes(double gear, IReadOnlyList<GemCadFileTierData> tiers)
         {
-            //var result = new List<CuttingPlane>();
-            
             for (int i = 0; i < tiers.Count; i++)
             {
                 var tier = tiers[i];
@@ -202,17 +200,9 @@ namespace LibGemcadFileReader.Concrete
                     double x = distance * Math.Sin(alpha) * Math.Cos(beta);
                     double y = distance * Math.Sin(alpha) * Math.Sin(beta);
                     double z = sg * distance * Math.Cos(alpha);
-
-                    //var plane = new CuttingPlane();
-                    //plane.Point = new Vertex3D(x, y, z);
-                    //plane.NormalVector = plane.Point.Clone<Vertex3D>();
                     tier.Indices[j].FacetPoint = new Vertex3D(x, y, z);
-                    tier.Indices[j].FacetNormal = new Vertex3D(x, y, z);
-                    //result.Add(plane);
                 }
             }
-            
-            //return result;
         }
 
 
@@ -423,7 +413,6 @@ namespace LibGemcadFileReader.Concrete
 
                     if (cutPolygon.VertexCount > 2)
                     {
-                        cutPolygon.Normal = tierIndex.FacetNormal.Clone<Vertex3D>();
                         ReArrangePoints(cutPolygon);
                         polygons.Add(cutPolygon);
                     }
@@ -437,7 +426,6 @@ namespace LibGemcadFileReader.Concrete
             Vertex3D g0, g1, p;
             double cx, cy, cz;
             p = tierIndex.FacetPoint.Clone<Vertex3D>();
-            Vertex3D n = tierIndex.FacetNormal.Clone<Vertex3D>();
             double delta, d;
             int i = 0;
 
@@ -455,11 +443,11 @@ namespace LibGemcadFileReader.Concrete
                     g1 = pg[i + 1].Vertex;
                 }
 
-                d = n.X * (g1.X - g0.X) + n.Y * (g1.Y - g0.Y) + n.Z * (g1.Z - g0.Z);
+                d = p.X * (g1.X - g0.X) + p.Y * (g1.Y - g0.Y) + p.Z * (g1.Z - g0.Z);
 
                 if (Math.Abs(d) > Tolerance)
                 {
-                    delta = (n.X * (p.X - g0.X) + n.Y * (p.Y - g0.Y) + n.Z * (p.Z - g0.Z)) / d;
+                    delta = (p.X * (p.X - g0.X) + p.Y * (p.Y - g0.Y) + p.Z * (p.Z - g0.Z)) / d;
                     if (Math.Abs(delta) < Tolerance)
                         delta = 0;
 
@@ -502,7 +490,7 @@ namespace LibGemcadFileReader.Concrete
             {
                 g1 = pg[i].Vertex;
 
-                d = n.X * (g1.X - p.X) + n.Y * (g1.Y - p.Y) + n.Z * (g1.Z - p.Z);
+                d = p.X * (g1.X - p.X) + p.Y * (g1.Y - p.Y) + p.Z * (g1.Z - p.Z);
 
                 if (d > 0)
                 {
@@ -533,7 +521,7 @@ namespace LibGemcadFileReader.Concrete
                 }
             }
 
-            if (pg.VertexCount > 2)
+            if (pg.VertexCount > 3)
                 ReArrangePoints(pg);
             return crossPt;
         }

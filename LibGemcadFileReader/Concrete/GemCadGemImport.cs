@@ -172,32 +172,25 @@ namespace LibGemcadFileReader.Concrete
                     parsedData.Metadata.Unknown3 = unknown3;
                     parsedData.Metadata.Unknown4 = unknown4;
                     parsedData.Metadata.Gear = reader.ReadInt32();
-                    parsedData.Metadata.Index = ValidateDouble(reader.ReadDouble());
+                    parsedData.Metadata.RefractiveIndex = reader.ReadDouble();
                     parsedData.Metadata.Unknown5 =
                         reader.ReadInt32(); // Unknown - but seems to be same in all files
-                    parsedData.Metadata.GearLocationAngle = ValidateDouble(reader.ReadDouble());
+                    parsedData.Metadata.GearLocationAngle = reader.ReadDouble();
 
                     logger.Debug("[GEMIMPORT] Parsing trailer section text lines");
-                    var textLines = new List<string>();
+                    var textLines = parsedData.Metadata.Headers;
                     while (reader.BaseStream.Position < reader.BaseStream.Length - 3)
                     {
-                        var line = ReadAnsiString(reader, false)?.Trim() ?? string.Empty;
+                        var line = ReadAnsiString(reader, false);
                         if (!string.IsNullOrWhiteSpace(line))
                         {
+                            logger.Debug($"[GEMIMPORT] Parsed trailer text line: {line}");
                             textLines.Add(line);
-                        }
-                    }
-
-                    if (textLines.Any())
-                    {
-                        if (textLines.Count > 1)
-                        {
-                            parsedData.Metadata.Headers = textLines.Take(textLines.Count - 1).ToList();
-                            parsedData.Metadata.Footer = textLines.Last();
                         }
                         else
                         {
-                            parsedData.Metadata.Headers = textLines.ToList();
+                            logger.Debug("[GEMIMPORT] Switching to footnotes section");
+                            textLines = parsedData.Metadata.Footnotes;
                         }
                     }
                 }
@@ -208,20 +201,17 @@ namespace LibGemcadFileReader.Concrete
                     logger.Debug(
                         $"[GEMIMPORT] Parsing tier index record at offset {reader.BaseStream.Position.ToString("X8")}");
                     var rec = new GemCadFileTierIndexData();
-                    rec.FacetNormal = Read3DPoint(reader, out int eodMarker);
+                    rec.FacetPoint = Read3DPoint(reader, out int eodMarker);
                     rec.Tier = eodMarker;
-                    var offset = reader.BaseStream.Position;
                     var text = ReadAnsiString(reader, true).Split('\t');
                     if (text.Length > 0)
                     {
                         rec.Name = text[0].Trim();
                         if (text.Length > 1)
                         {
-                            rec.CuttingInstructions = text[1].Trim();
-                            if (text.Length > 2)
+                            if (string.IsNullOrWhiteSpace(currentTier.CuttingInstructions))
                             {
-                                logger.Warn(
-                                    $"Ignoring {text.Length - 2} string element(s) at offset {offset.ToString("X8")}: {string.Join("\t", text.Skip(2))}");
+                                currentTier.CuttingInstructions = string.Join("\t", text.Skip(1));
                             }
                         }
                     }
@@ -259,9 +249,9 @@ namespace LibGemcadFileReader.Concrete
         private Vertex3D Read3DPoint(BinaryReader reader, out int eodMarker)
         {
             var result = new Vertex3D();
-            result.X = ValidateDouble(reader.ReadDouble());
-            result.Y = ValidateDouble(reader.ReadDouble());
-            result.Z = ValidateDouble(reader.ReadDouble());
+            result.X = reader.ReadDouble();
+            result.Y = reader.ReadDouble();
+            result.Z = reader.ReadDouble();
             eodMarker = ReadEodMarker(reader);
             return result;
         }
@@ -273,21 +263,22 @@ namespace LibGemcadFileReader.Concrete
             if (strLen > 0)
             {
                 var strBytes = reader.ReadBytes(strLen);
-                result = Encoding.ASCII.GetString(strBytes);
+                result = Encoding.ASCII.GetString(strBytes).Trim();
             }
 
             if (checkMarker)
             {
                 ReadEodMarker(reader);
             }
+            else if (string.IsNullOrWhiteSpace(result))
+            {
+                if (reader.ReadByte() > 0)
+                {
+                    reader.BaseStream.Position--;
+                }
+            }  
 
             return result;
-        }
-
-        private double ValidateDouble(double value)
-        {
-            // Ugh - Surely there's a better way to handle this.
-            return value.ToString().Contains('E') ? 0.0 : value;
         }
 
         private int ReadEodMarker(BinaryReader reader)
