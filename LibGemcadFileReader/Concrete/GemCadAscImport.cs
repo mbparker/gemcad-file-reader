@@ -10,8 +10,6 @@ namespace LibGemcadFileReader.Concrete
 {
     public class GemCadAscImport : IGemCadAscImport
     {
-        private const double Tolerance = 0.0000000001;
-
         private readonly IFileOperations fileOperations;
         private readonly IVectorOperations vectorOperations;
         private readonly IGeometryOperations geometryOperations;
@@ -178,33 +176,35 @@ namespace LibGemcadFileReader.Concrete
 
         private void BuildGeometry(GemCadFileData fileData)
         {
-            GenerateCutPlanes(fileData.Metadata.Gear, fileData.Tiers);
+            GenerateCutPlanes(fileData.Metadata.Gear, fileData.Metadata.GearLocationAngle, fileData.Tiers);
             fileData.FacetPolygons.AddRange(GenerateRoughCube());
             PerformCutsOnRoughCube(fileData.FacetPolygons, fileData.Tiers);
             ProcessPolygons(fileData);
         }
 
-        private void GenerateCutPlanes(double gear, IReadOnlyList<GemCadFileTierData> tiers)
+        private void GenerateCutPlanes(double gear, double gearAngle, IReadOnlyList<GemCadFileTierData> tiers)
         {
+            var origin = new Vertex3D();
+            var stepAngle = 360.0 / gear;
             for (int i = 0; i < tiers.Count; i++)
             {
                 var tier = tiers[i];
-                double alpha = tier.Angle * Math.PI / 180.0;
-                double distance = tier.Distance;
-                int sg = Math.Sign(alpha);
-                if (sg == 0) sg = 1;
-                
                 for (int j = 0; j < tier.Indices.Count; j++)
                 {
-                    double beta = tier.Indices[j].Index / gear * Math.PI * 2;
-                    double x = distance * Math.Sin(alpha) * Math.Cos(beta);
-                    double y = distance * Math.Sin(alpha) * Math.Sin(beta);
-                    double z = sg * distance * Math.Cos(alpha);
-                    tier.Indices[j].FacetPoint = new Vertex3D(x, y, z);
+                    var pt = geometryOperations.ProjectPoint(origin, tier.Distance, 90);
+                    var pitchAngle = MathUtils.FilterAngle(Math.Abs(tier.Angle) - 90);
+                    if (Math.Sign(tier.Angle) < 0)
+                    {
+                        pitchAngle *= -1;
+                    }
+                    var rollAngle = tier.Indices[j].Index * stepAngle;
+                    var rollAngleOffset = gearAngle * stepAngle;
+                    pt = geometryOperations.RotatePoint(pt, 0, 0, pitchAngle, origin);
+                    pt = geometryOperations.RotatePoint(pt, 0,  MathUtils.FilterAngle(rollAngle - rollAngleOffset), 0, origin);
+                    tier.Indices[j].FacetPoint = pt;
                 }
             }
         }
-
 
         private List<Polygon> GenerateRoughCube()
         {
@@ -445,10 +445,10 @@ namespace LibGemcadFileReader.Concrete
 
                 d = p.X * (g1.X - g0.X) + p.Y * (g1.Y - g0.Y) + p.Z * (g1.Z - g0.Z);
 
-                if (Math.Abs(d) > Tolerance)
+                if (Math.Abs(d) > Constants.Tolerance)
                 {
                     delta = (p.X * (p.X - g0.X) + p.Y * (p.Y - g0.Y) + p.Z * (p.Z - g0.Z)) / d;
-                    if (Math.Abs(delta) < Tolerance)
+                    if (Math.Abs(delta) < Constants.Tolerance)
                         delta = 0;
 
                     cx = g0.X + (g1.X - g0.X) * delta;
@@ -674,7 +674,7 @@ namespace LibGemcadFileReader.Concrete
             double dis = Math.Sqrt(Math.Pow(pt1.X - pt2.X, 2.0) +
                                    Math.Pow(pt1.Y - pt2.Y, 2.0) +
                                    Math.Pow(pt1.Z - pt2.Z, 2.0));
-            if (dis < Tolerance)
+            if (dis < Constants.Tolerance)
                 bIsSame = true;
 
             return bIsSame;

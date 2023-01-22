@@ -4,7 +4,6 @@ using LibGemcadFileReader.Models.Geometry.Primitive;
 namespace LibGemcadFileReader.Concrete
 {
     using System;
-    using System.Collections.Generic;
 
     public class GeometryOperations : IGeometryOperations
     {
@@ -15,44 +14,47 @@ namespace LibGemcadFileReader.Concrete
             double z = Math.Pow(p2.Z - p1.Z, 2);
             return Math.Sqrt(x + y + z);
         }
-
-        public double TrueAngleBetweenVectors(Vertex3D p1, Vertex3D p2, Vertex3D p3)
+        
+        public Vertex3D ProjectPoint(Vertex3D center, double distance, double angle)
         {
-            double tb3 = 0;
-            double a = Length3d(p1, p2);
-            double b = Length3d(p2, p3);
-            double dc = a * b;
-            if (Math.Abs(dc) < double.Epsilon)
-            {
-                return -1;
-            }
-            double nc = (p2.X - p1.X) * (p3.X - p2.X);
-            nc += (p2.Y - p1.Y) * (p3.Y - p2.Y);
-            nc += (p2.Z - p1.Z) * (p3.Z - p2.Z);
-            double ic = nc / dc;
-
-            if ((ic <= -1) || (ic >= 1))
-            {
-                if (ic <= -1)
-                {
-                    tb3 = 180;
-                }
-                if (ic >= 1)
-                {
-                    tb3 = 0;
-                }
-            }
-            else
-            {
-                a = Math.Sqrt((-ic * ic) + 1);
-                if (Math.Abs(a) < double.Epsilon)
-                {
-                    return -1;
-                }
-                tb3 = 90 - ((1 / (Math.PI / 180)) * (Math.Atan(ic / a)));
-            }
-
-            return Math.Abs(tb3);
+            double radians = angle * Constants.Radian;
+            double moveX = Math.Cos(radians) * distance;
+            double moveY = Math.Sin(radians) * distance;
+            return new Vertex3D { X = moveX + center.X, Y = moveY + center.Y, Z = center.Z };
         }
+        
+        public Vertex3D RotatePoint(Vertex3D point, double yaw, double roll, double pitch, Vertex3D center)
+        {
+            var result = new Vertex3D { X = point.X, Y = point.Y, Z = point.Z };
+            if (Math.Abs(yaw) >= double.Epsilon || Math.Abs(roll) >= double.Epsilon || Math.Abs(pitch) >= double.Epsilon)
+            {
+                yaw = MathUtils.FilterAngle(yaw);
+                roll = MathUtils.FilterAngle(roll);
+                pitch = MathUtils.FilterAngle(pitch);
+
+                result.X -= center.X;
+                result.Y -= center.Y;
+                result.Z -= center.Z;
+
+                double yawCosine = Math.Cos(yaw * Constants.Radian);
+                double yawSine = Math.Sin(yaw * Constants.Radian);
+                double rollCosine = Math.Cos(roll * Constants.Radian);
+                double rollSine = Math.Sin(roll * Constants.Radian);
+                double pitchCosine = Math.Cos(pitch * Constants.Radian);
+                double pitchSine = Math.Sin(pitch * Constants.Radian);
+
+                double workX = (yawCosine * result.X) - (yawSine * result.Z);
+                double workZ = (yawSine * result.X) + (yawCosine * result.Z);
+                result.X = (rollCosine * workX) + (rollSine * result.Y);
+                double workY = (rollCosine * result.Y) - (rollSine * workX);
+                result.Z = (pitchCosine * workZ) - (pitchSine * workY);
+                result.Y = (pitchSine * workZ) + (pitchCosine * workY);
+
+                result.X += center.X;
+                result.Y += center.Y;
+                result.Z += center.Z;
+            }
+            return result;
+        }        
     }
 }
