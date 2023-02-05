@@ -9,5 +9,10 @@ namespace LibGemcadFileReader.Concrete
         {
             return new FileStream(path, mode);
         }
+        
+        public bool FileExists(string path)
+        {
+            return File.Exists(path);
+        }
     }
 }
