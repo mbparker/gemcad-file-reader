@@ -55,6 +55,83 @@ namespace LibGemcadFileReader.Concrete
                 result.Z += center.Z;
             }
             return result;
-        }        
+        }
+        
+        public double GetAngle2d(Vertex3D p1, Vertex3D p2)
+        {
+            var vp1 = new Vertex3D { X = p2.X - p1.X, Y = p2.Y - p1.Y, Z = 0 };
+            var vp2 = new Vertex3D();
+            var vp3 = new Vertex3D { X = 25 };
+
+            double angle = TrueAngleBetweenVectors(vp1, vp2, vp3);
+
+            if (vp1.Y < 0)
+            {
+                return -(180 - angle);
+            }
+
+            return 180 - angle;
+        }
+        
+        public double TrueAngleBetweenVectors(Vertex3D p1, Vertex3D p2, Vertex3D p3)
+        {
+            double tb3 = 0;
+            double a = Length3d(p1, p2);
+            double b = Length3d(p2, p3);
+            double dc = a * b;
+            if (Math.Abs(dc) < double.Epsilon)
+            {
+                return -1;
+            }
+            double nc = (p2.X - p1.X) * (p3.X - p2.X);
+            nc += (p2.Y - p1.Y) * (p3.Y - p2.Y);
+            nc += (p2.Z - p1.Z) * (p3.Z - p2.Z);
+            double ic = nc / dc;
+
+            if ((ic <= -1) || (ic >= 1))
+            {
+                if (ic <= -1)
+                {
+                    tb3 = 180;
+                }
+                if (ic >= 1)
+                {
+                    tb3 = 0;
+                }
+            }
+            else
+            {
+                a = Math.Sqrt((-ic * ic) + 1);
+                if (Math.Abs(a) < double.Epsilon)
+                {
+                    return -1;
+                }
+                tb3 = 90 - ((1 / (Math.PI / 180)) * (Math.Atan(ic / a)));
+            }
+
+            return Math.Abs(tb3);
+        }
+        
+        public Vertex3D ProjectPointAlongVector(Vertex3D p1, Vertex3D p2, double distance)
+        {
+            var result = new Vertex3D { X = p1.X, Y = p1.Y, Z = p1.Z };
+            if (Math.Abs(distance) >= double.Epsilon)
+            {
+                double x = p1.X - p2.X;
+                double y = p1.Y - p2.Y;
+                double z = p1.Z - p2.Z;
+                double q = Math.Sqrt(Math.Pow(x, 2) + Math.Pow(y, 2) + Math.Pow(z, 2)) - distance;
+                double denom = distance + q;
+
+                if (Math.Abs(denom) >= double.Epsilon)
+                {
+                    result.X = (q * p1.X + distance * p2.X) / denom;
+                    result.Y = (q * p1.Y + distance * p2.Y) / denom;
+                    result.Z = (q * p1.Z + distance * p2.Z) / denom;
+                }
+            }
+
+            return result;
+        }
     }
 }

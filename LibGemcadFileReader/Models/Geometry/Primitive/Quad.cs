@@ -11,11 +11,11 @@
         {
             get
             {
-                return this[0];
+                return Vertices[0];
             }
             set
             {
-                this[0] = value;
+                Vertices[0].Assign(value);
             }
         }
 
@@ -23,11 +23,11 @@
         {
             get
             {
-                return this[1];
+                return Vertices[1];
             }
             set
             {
-                this[1] = value;
+                Vertices[1].Assign(value);
             }
         }
 
@@ -35,11 +35,11 @@
         {
             get
             {
-                return this[2];
+                return Vertices[2];
             }
             set
             {
-                this[2] = value;
+                Vertices[2].Assign(value);
             }
         }
 
@@ -47,12 +47,14 @@
         {
             get
             {
-                return this[3];
+                return Vertices[3];
             }
             set
             {
-                this[3] = value;
+                Vertices[3].Assign(value);
             }
         }
+        
+        protected override bool PointCountImmutable => true;
     }
 }

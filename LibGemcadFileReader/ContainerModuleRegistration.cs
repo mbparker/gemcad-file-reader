@@ -13,6 +13,7 @@ namespace LibGemcadFileReader
             builder.RegisterType<GemCadAscImport>().As<IGemCadAscImport>().SingleInstance();
             builder.RegisterType<GemCadGemImport>().As<IGemCadGemImport>().SingleInstance();
             builder.RegisterType<VectorOperations>().As<IVectorOperations>().SingleInstance();
+            builder.RegisterType<PolygonSubdivisionProvider>().As<IPolygonSubdivisionProvider>().SingleInstance();
         }
     }
 }

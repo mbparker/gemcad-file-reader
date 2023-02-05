@@ -67,20 +67,24 @@ namespace LibGemcadFileReader.Concrete
         private readonly IFileOperations fileOperations;
         private readonly IVectorOperations vectorOperations;
         private readonly IGeometryOperations geometryOperations;
+        private readonly IPolygonSubdivisionProvider subdivisionProvider;
         private readonly ILoggerService logger;
 
         public GemCadGemImport(IFileOperations fileOperations, IVectorOperations vectorOperations,
-            IGeometryOperations geometryOperations, ILoggerService logger)
+            IGeometryOperations geometryOperations, IPolygonSubdivisionProvider subdivisionProvider, 
+            ILoggerService logger)
         {
             this.fileOperations = fileOperations;
             this.vectorOperations = vectorOperations;
             this.geometryOperations = geometryOperations;
+            this.subdivisionProvider = subdivisionProvider;
             this.logger = logger;
         }
 
         public GemCadFileData Import(string filename)
         {
             var data = ParseBinaryData(filename);
+            CalculateTierDefinitions(data);
             BuildModel(data);
             return data;
         }
@@ -97,18 +101,91 @@ namespace LibGemcadFileReader.Concrete
             }
         }
 
+        private void CalculateTierDefinitions(GemCadFileData parsedData)
+        {
+            var origin = new Vertex3D();
+            var stepAngle = 360.0 / parsedData.Metadata.Gear;
+            var rollAngleOffset = parsedData.Metadata.GearLocationAngle * stepAngle;
+            logger.Debug($"[GEMIMPORT] Gear: {parsedData.Metadata.Gear} Step Angle: {stepAngle} Gear Location Angle: {parsedData.Metadata.GearLocationAngle} Roll Offset Angle: {rollAngleOffset}");
+            for (int i = 0; i < parsedData.Tiers.Count; i++)
+            {
+                var tier = parsedData.Tiers[i];
+                for (int j = 0; j < tier.Indices.Count; j++)
+                {
+                    var index = tier.Indices[j];
+
+                    if (j == 0)
+                    {
+                        double angle;
+                        if (Math.Abs(index.FacetPoint.X) < double.Epsilon &&
+                            Math.Abs(index.FacetPoint.Y) < double.Epsilon)
+                        {
+                            if (Math.Sign(index.FacetPoint.Z) > 0)
+                            {
+                                angle = 0.0;
+                            }
+                            else
+                            {
+                                angle = -90.0;
+                            }
+                        }
+                        else
+                        {
+                            angle = MathUtils.FilterAngle(geometryOperations.TrueAngleBetweenVectors(index.FacetPoint,
+                                origin,
+                                new Vertex3D(index.FacetPoint.X, index.FacetPoint.Y, 0)) - 90);
+                            if (index.FacetPoint.Z < 0)
+                            {
+                                angle *= -1;
+                            }
+                        }
+
+                        angle = Math.Round(angle, 2);
+                        var distance = geometryOperations.Length3d(origin, index.FacetPoint);
+                        
+                        tier.Angle = angle;
+                        tier.Distance = distance;
+                        logger.Debug($"[GEMIMPORT] Tier {i}: ANGLE={angle} DIST={distance}");
+                    }
+
+                    double indexAngle;
+                    if (Math.Abs(index.FacetPoint.X) < double.Epsilon && Math.Abs(index.FacetPoint.Y) < double.Epsilon)
+                    {
+                        indexAngle = parsedData.Metadata.Gear;
+                    }
+                    else
+                    {
+                        indexAngle =
+                            (geometryOperations.GetAngle2d(origin,
+                                new Vertex3D(index.FacetPoint.X, index.FacetPoint.Y, 0)) - 90 + rollAngleOffset) /
+                            stepAngle * -1;
+                        if (Math.Sign(indexAngle) < 0)
+                        {
+                            indexAngle += parsedData.Metadata.Gear;
+                        }
+                    }
+
+                    var indexVal = Convert.ToInt32(Math.Round(indexAngle));
+                    index.Index = indexVal;
+
+                    logger.Debug($"[GEMIMPORT] Tier {i} Index {j}: {indexVal}");
+                }
+            }
+        }
+
         private void BuildModel(GemCadFileData parsedData)
         {
             for (int i = 0; i < parsedData.Tiers.Count; i++)
             {
                 for (int j = 0; j < parsedData.Tiers[i].Indices.Count; j++)
                 {
-                    for (int k = 1; k < parsedData.Tiers[i].Indices[j].Points.Count - 1; k++)
+                    var index = parsedData.Tiers[i].Indices[j];
+                    for (int k = 1; k < index.Points.Count - 1; k++)
                     {
                         var triangle = new Triangle();
-                        triangle.P1 = new PolygonVertex(parsedData.Tiers[i].Indices[j].Points[0]);
-                        triangle.P2 = new PolygonVertex(parsedData.Tiers[i].Indices[j].Points[k]);
-                        triangle.P3 = new PolygonVertex(parsedData.Tiers[i].Indices[j].Points[k + 1]);
+                        triangle.P1 = new PolygonVertex(index.Points[0]);
+                        triangle.P2 = new PolygonVertex(index.Points[k]);
+                        triangle.P3 = new PolygonVertex(index.Points[k + 1]);
 
                         // Don't assume the winding is correct, because it's probably not for half the polys.
                         // Check both directions, and take the normal with the end furthest from 0,0,0
@@ -141,9 +218,13 @@ namespace LibGemcadFileReader.Concrete
                         triangle.P3.Normal = triangle.Normal;
                         parsedData.RenderingTriangles.Add(triangle);
                     }
-                    
                 }
             }
+
+            var startingCount = parsedData.RenderingTriangles.Count;
+            parsedData.RenderingTriangles = subdivisionProvider.Subdivide(parsedData.RenderingTriangles, 1).ToList();
+            logger.Debug(
+                $"[GEMIMPORT] Subdivided {startingCount} triangles to {parsedData.RenderingTriangles.Count} triangles for rendering.");
         }
 
         private GemCadFileData ParseBinaryData(BinaryReader reader)
@@ -276,7 +357,7 @@ namespace LibGemcadFileReader.Concrete
                 {
                     reader.BaseStream.Position--;
                 }
-            }  
+            }            
 
             return result;
         }

@@ -1,25 +1,31 @@
-﻿using System.Collections;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 
 namespace LibGemcadFileReader.Models.Geometry.Primitive
 {
-    public class Polygon : IEnumerable<PolygonVertex>
+    public class Polygon
     {
         private readonly Vertex3D normal;
         private readonly List<PolygonVertex> vertices;
-
-        public Polygon(int vertexCount)
+        
+        public Polygon()
         {
             normal = new Vertex3D();
-            vertices = new List<PolygonVertex>(vertexCount);
+            vertices = new List<PolygonVertex>();            
+        }
+        
+        public Polygon(int vertexCount)
+            : this()
+        {
+            vertices = new List<PolygonVertex>(vertexCount); 
             for (int i = 0; i < vertexCount; i++)
             {
-                AddVertex(new PolygonVertex());
+                vertices.Add(new PolygonVertex());
             }
         }
 
-        public ulong Id { get; set; }
+        public string Tag { get; set; } = "{}";
 
         public Vertex3D Normal
         {
@@ -27,27 +33,30 @@ namespace LibGemcadFileReader.Models.Geometry.Primitive
             set => normal.Assign(value);
         }
 
-        public int VertexCount => vertices.Count;
+        public IReadOnlyList<PolygonVertex> Vertices => vertices;
 
-        public PolygonVertex this[int index]
-        {
-            get => vertices[index];
-            set => vertices[index].Assign(value);
-        }
+        protected virtual bool PointCountImmutable => false;
 
         public void Replace(IReadOnlyList<PolygonVertex> newVertices)
         {
+            if (vertices.Count != newVertices.Count)
+            {
+                ThrowIfPointCountImmutable();
+            }
+            
             vertices.Clear();
             vertices.AddRange(newVertices);
         }
 
         public void RemoveAt(int index)
         {
+            ThrowIfPointCountImmutable();
             vertices.RemoveAt(index);
         }
         
         public void Add(PolygonVertex newVertex)
         {
+            ThrowIfPointCountImmutable();
             vertices.Add(newVertex);
         }
 
@@ -58,37 +67,30 @@ namespace LibGemcadFileReader.Models.Geometry.Primitive
 
         public void Read(BinaryReader reader)
         {
-            Id = reader.ReadUInt64();
+            Tag = reader.ReadString();
             Normal.Read(reader);
             for (int i = 0; i < vertices.Count; i++)
             {
-                this[i].Read(reader);
+                Vertices[i].Read(reader);
             }
         }
 
         public void Write(BinaryWriter writer)
         {
-            writer.Write(Id);
+            writer.Write(Tag);
             Normal.Write(writer);
             for (int i = 0; i < vertices.Count; i++)
             {
-                this[i].Write(writer);
+                Vertices[i].Write(writer);
             }
         }
 
-        public IEnumerator<PolygonVertex> GetEnumerator()
+        private void ThrowIfPointCountImmutable()
         {
-            return vertices.GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return vertices.GetEnumerator();
-        }
-
-        private void AddVertex(PolygonVertex vertex)
-        {
-            vertices.Add(vertex);
+            if (PointCountImmutable)
+            {
+                throw new InvalidOperationException($"The number of points cannot change in a polygon of type {GetType().Name}");
+            }
         }
     }
 }

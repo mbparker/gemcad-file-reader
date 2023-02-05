@@ -13,14 +13,17 @@ namespace LibGemcadFileReader.Concrete
         private readonly IFileOperations fileOperations;
         private readonly IVectorOperations vectorOperations;
         private readonly IGeometryOperations geometryOperations;
+        private readonly IPolygonSubdivisionProvider subdivisionProvider;
         private readonly ILoggerService logger;
 
         public GemCadAscImport(IFileOperations fileOperations, IVectorOperations vectorOperations,
-            IGeometryOperations geometryOperations, ILoggerService logger)
+            IGeometryOperations geometryOperations, IPolygonSubdivisionProvider subdivisionProvider, 
+            ILoggerService logger)
         {
             this.fileOperations = fileOperations;
             this.vectorOperations = vectorOperations;
             this.geometryOperations = geometryOperations;
+            this.subdivisionProvider = subdivisionProvider;
             this.logger = logger;
         }
 
@@ -186,6 +189,7 @@ namespace LibGemcadFileReader.Concrete
         {
             var origin = new Vertex3D();
             var stepAngle = 360.0 / gear;
+            var rollAngleOffset = gearAngle * stepAngle;
             for (int i = 0; i < tiers.Count; i++)
             {
                 var tier = tiers[i];
@@ -198,14 +202,13 @@ namespace LibGemcadFileReader.Concrete
                         pitchAngle *= -1;
                     }
                     var rollAngle = tier.Indices[j].Index * stepAngle;
-                    var rollAngleOffset = gearAngle * stepAngle;
                     pt = geometryOperations.RotatePoint(pt, 0, 0, pitchAngle, origin);
                     pt = geometryOperations.RotatePoint(pt, 0,  MathUtils.FilterAngle(rollAngle - rollAngleOffset), 0, origin);
                     tier.Indices[j].FacetPoint = pt;
                 }
             }
         }
-
+        
         private List<Polygon> GenerateRoughCube()
         {
             const double L = 10;
@@ -224,134 +227,132 @@ namespace LibGemcadFileReader.Concrete
 
         private void AddBack(List<Polygon> result, double sizeDiv2)
         {
-            var quad = new Quad();
+            var quad = new Polygon(4);
             result.Add(quad);
-            quad.P1.Vertex.X = -sizeDiv2;
-            quad.P1.Vertex.Y = -sizeDiv2;
-            quad.P1.Vertex.Z = -sizeDiv2;
+            quad.Vertices[0].Vertex.X = -sizeDiv2;
+            quad.Vertices[0].Vertex.Y = -sizeDiv2;
+            quad.Vertices[0].Vertex.Z = -sizeDiv2;
 
-            quad.P2.Vertex.X = -sizeDiv2;
-            quad.P2.Vertex.Y = sizeDiv2;
-            quad.P2.Vertex.Z = -sizeDiv2;
+            quad.Vertices[1].Vertex.X = -sizeDiv2;
+            quad.Vertices[1].Vertex.Y = sizeDiv2;
+            quad.Vertices[1].Vertex.Z = -sizeDiv2;
 
-            quad.P3.Vertex.X = sizeDiv2;
-            quad.P3.Vertex.Y = sizeDiv2;
-            quad.P3.Vertex.Z = -sizeDiv2;
+            quad.Vertices[2].Vertex.X = sizeDiv2;
+            quad.Vertices[2].Vertex.Y = sizeDiv2;
+            quad.Vertices[2].Vertex.Z = -sizeDiv2;
 
-            quad.P4.Vertex.X = sizeDiv2;
-            quad.P4.Vertex.Y = -sizeDiv2;
-            quad.P4.Vertex.Z = -sizeDiv2;
+            quad.Vertices[3].Vertex.X = sizeDiv2;
+            quad.Vertices[3].Vertex.Y = -sizeDiv2;
+            quad.Vertices[3].Vertex.Z = -sizeDiv2;
         }
 
         private void AddBottom(List<Polygon> result, double sizeDiv2)
         {
-            var quad = new Quad();
+            var quad = new Polygon(4);
             result.Add(quad);
-            quad.P1.Vertex.X = -sizeDiv2;
-            quad.P1.Vertex.Y = -sizeDiv2;
-            quad.P1.Vertex.Z = sizeDiv2;
+            quad.Vertices[0].Vertex.X = -sizeDiv2;
+            quad.Vertices[0].Vertex.Y = -sizeDiv2;
+            quad.Vertices[0].Vertex.Z = sizeDiv2;
 
-            quad.P2.Vertex.X = -sizeDiv2;
-            quad.P2.Vertex.Y = -sizeDiv2;
-            quad.P2.Vertex.Z = -sizeDiv2;
+            quad.Vertices[1].Vertex.X = -sizeDiv2;
+            quad.Vertices[1].Vertex.Y = -sizeDiv2;
+            quad.Vertices[1].Vertex.Z = -sizeDiv2;
 
-            quad.P3.Vertex.X = sizeDiv2;
-            quad.P3.Vertex.Y = -sizeDiv2;
-            quad.P3.Vertex.Z = -sizeDiv2;
+            quad.Vertices[2].Vertex.X = sizeDiv2;
+            quad.Vertices[2].Vertex.Y = -sizeDiv2;
+            quad.Vertices[2].Vertex.Z = -sizeDiv2;
 
-            quad.P4.Vertex.X = sizeDiv2;
-            quad.P4.Vertex.Y = -sizeDiv2;
-            quad.P4.Vertex.Z = sizeDiv2;
+            quad.Vertices[3].Vertex.X = sizeDiv2;
+            quad.Vertices[3].Vertex.Y = -sizeDiv2;
+            quad.Vertices[3].Vertex.Z = sizeDiv2;
         }
 
         private void AddFront(List<Polygon> result, double sizeDiv2)
         {
-            var quad = new Quad();
+            var quad = new Polygon(4);
             result.Add(quad);
-            quad.P4.Vertex.X = sizeDiv2;
-            quad.P4.Vertex.Y = -sizeDiv2;
-            quad.P4.Vertex.Z = sizeDiv2;
+            quad.Vertices[3].Vertex.X = sizeDiv2;
+            quad.Vertices[3].Vertex.Y = -sizeDiv2;
+            quad.Vertices[3].Vertex.Z = sizeDiv2;
 
-            quad.P3.Vertex.X = -sizeDiv2;
-            quad.P3.Vertex.Y = -sizeDiv2;
-            quad.P3.Vertex.Z = sizeDiv2;
+            quad.Vertices[2].Vertex.X = -sizeDiv2;
+            quad.Vertices[2].Vertex.Y = -sizeDiv2;
+            quad.Vertices[2].Vertex.Z = sizeDiv2;
 
-            quad.P2.Vertex.X = -sizeDiv2;
-            quad.P2.Vertex.Y = sizeDiv2;
-            quad.P2.Vertex.Z = sizeDiv2;
+            quad.Vertices[1].Vertex.X = -sizeDiv2;
+            quad.Vertices[1].Vertex.Y = sizeDiv2;
+            quad.Vertices[1].Vertex.Z = sizeDiv2;
 
-            quad.P1.Vertex.X = sizeDiv2;
-            quad.P1.Vertex.Y = sizeDiv2;
-            quad.P1.Vertex.Z = sizeDiv2;
+            quad.Vertices[0].Vertex.X = sizeDiv2;
+            quad.Vertices[0].Vertex.Y = sizeDiv2;
+            quad.Vertices[0].Vertex.Z = sizeDiv2;
         }
 
         private void AddLeft(List<Polygon> result, double sizeDiv2)
         {
-            var quad = new Quad();
+            var quad = new Polygon(4);
             result.Add(quad);
-            quad.P4.Vertex.X = -sizeDiv2;
-            quad.P4.Vertex.Y = -sizeDiv2;
-            quad.P4.Vertex.Z = sizeDiv2;
+            quad.Vertices[3].Vertex.X = -sizeDiv2;
+            quad.Vertices[3].Vertex.Y = -sizeDiv2;
+            quad.Vertices[3].Vertex.Z = sizeDiv2;
 
-            quad.P3.Vertex.X = -sizeDiv2;
-            quad.P3.Vertex.Y = -sizeDiv2;
-            quad.P3.Vertex.Z = -sizeDiv2;
+            quad.Vertices[2].Vertex.X = -sizeDiv2;
+            quad.Vertices[2].Vertex.Y = -sizeDiv2;
+            quad.Vertices[2].Vertex.Z = -sizeDiv2;
 
-            quad.P2.Vertex.X = -sizeDiv2;
-            quad.P2.Vertex.Y = sizeDiv2;
-            quad.P2.Vertex.Z = -sizeDiv2;
+            quad.Vertices[1].Vertex.X = -sizeDiv2;
+            quad.Vertices[1].Vertex.Y = sizeDiv2;
+            quad.Vertices[1].Vertex.Z = -sizeDiv2;
 
-            quad.P1.Vertex.X = -sizeDiv2;
-            quad.P1.Vertex.Y = sizeDiv2;
-            quad.P1.Vertex.Z = sizeDiv2;
+            quad.Vertices[0].Vertex.X = -sizeDiv2;
+            quad.Vertices[0].Vertex.Y = sizeDiv2;
+            quad.Vertices[0].Vertex.Z = sizeDiv2;
         }
 
         private void AddRight(List<Polygon> result, double sizeDiv2)
         {
-            var quad = new Quad();
+            var quad = new Polygon(4);
             result.Add(quad);
-            quad.P1.Vertex.X = sizeDiv2;
-            quad.P1.Vertex.Y = -sizeDiv2;
-            quad.P1.Vertex.Z = -sizeDiv2;
+            quad.Vertices[0].Vertex.X = sizeDiv2;
+            quad.Vertices[0].Vertex.Y = -sizeDiv2;
+            quad.Vertices[0].Vertex.Z = -sizeDiv2;
 
-            quad.P2.Vertex.X = sizeDiv2;
-            quad.P2.Vertex.Y = sizeDiv2;
-            quad.P2.Vertex.Z = -sizeDiv2;
+            quad.Vertices[1].Vertex.X = sizeDiv2;
+            quad.Vertices[1].Vertex.Y = sizeDiv2;
+            quad.Vertices[1].Vertex.Z = -sizeDiv2;
 
-            quad.P3.Vertex.X = sizeDiv2;
-            quad.P3.Vertex.Y = sizeDiv2;
-            quad.P3.Vertex.Z = sizeDiv2;
+            quad.Vertices[2].Vertex.X = sizeDiv2;
+            quad.Vertices[2].Vertex.Y = sizeDiv2;
+            quad.Vertices[2].Vertex.Z = sizeDiv2;
 
-            quad.P4.Vertex.X = sizeDiv2;
-            quad.P4.Vertex.Y = -sizeDiv2;
-            quad.P4.Vertex.Z = sizeDiv2;
+            quad.Vertices[3].Vertex.X = sizeDiv2;
+            quad.Vertices[3].Vertex.Y = -sizeDiv2;
+            quad.Vertices[3].Vertex.Z = sizeDiv2;
         }
 
         private void AddTop(List<Polygon> result, double sizeDiv2)
         {
-            var quad = new Quad();
+            var quad = new Polygon(4);
             result.Add(quad);
-            quad.P4.Vertex.X = sizeDiv2;
-            quad.P4.Vertex.Y = sizeDiv2;
-            quad.P4.Vertex.Z = sizeDiv2;
+            quad.Vertices[3].Vertex.X = sizeDiv2;
+            quad.Vertices[3].Vertex.Y = sizeDiv2;
+            quad.Vertices[3].Vertex.Z = sizeDiv2;
 
-            quad.P3.Vertex.X = -sizeDiv2;
-            quad.P3.Vertex.Y = sizeDiv2;
-            quad.P3.Vertex.Z = sizeDiv2;
+            quad.Vertices[2].Vertex.X = -sizeDiv2;
+            quad.Vertices[2].Vertex.Y = sizeDiv2;
+            quad.Vertices[2].Vertex.Z = sizeDiv2;
 
-            quad.P2.Vertex.X = -sizeDiv2;
-            quad.P2.Vertex.Y = sizeDiv2;
-            quad.P2.Vertex.Z = -sizeDiv2;
+            quad.Vertices[1].Vertex.X = -sizeDiv2;
+            quad.Vertices[1].Vertex.Y = sizeDiv2;
+            quad.Vertices[1].Vertex.Z = -sizeDiv2;
 
-            quad.P1.Vertex.X = sizeDiv2;
-            quad.P1.Vertex.Y = sizeDiv2;
-            quad.P1.Vertex.Z = -sizeDiv2;
+            quad.Vertices[0].Vertex.X = sizeDiv2;
+            quad.Vertices[0].Vertex.Y = sizeDiv2;
+            quad.Vertices[0].Vertex.Z = -sizeDiv2;
         }
 
         private void PerformCutsOnRoughCube(List<Polygon> polygons, IReadOnlyList<GemCadFileTierData> tiers)
         {
-            Vertex3D point;
-
             for (int h = 0; h < tiers.Count; h++)
             {
                 var tier = tiers[h];
@@ -365,14 +366,14 @@ namespace LibGemcadFileReader.Concrete
                     for (int j = 0; j < polygons.Count; j++)
                     {
                         var currentPolygon = polygons[j];
-                        if (currentPolygon.VertexCount == 0)
+                        if (currentPolygon.Vertices.Count == 0)
                             continue;
 
                         var crossPoints = CutPolygonByPlane(currentPolygon, tierIndex);
 
                         for (int k = 0; k < crossPoints.Count; k++)
                         {
-                            point = crossPoints[k];
+                            var point = crossPoints[k];
                             bool alreadyExists = false;
                             for (int l = 0; l < cutPoints.Count; l++)
                             {
@@ -390,14 +391,14 @@ namespace LibGemcadFileReader.Concrete
                         }
                     }
 
-                    logger.Debug($"CutPoints = {cutPoints.Count}");
+                    //logger.Debug($"CutPoints = {cutPoints.Count}");
                     for (int j = 0; j < cutPoints.Count; j++)
                     {
-                        point = cutPoints[j];
+                        var point = cutPoints[j];
                         bool alreadyExists = false;
-                        for (int k = 0; k < cutPolygon.VertexCount; k++)
+                        for (int k = 0; k < cutPolygon.Vertices.Count; k++)
                         {
-                            if (IsSamePoint(point, cutPolygon[k].Vertex))
+                            if (IsSamePoint(point, cutPolygon.Vertices[k].Vertex))
                             {
                                 alreadyExists = true;
                                 break;
@@ -411,7 +412,7 @@ namespace LibGemcadFileReader.Concrete
                         }
                     }
 
-                    if (cutPolygon.VertexCount > 2)
+                    if (cutPolygon.Vertices.Count > 2)
                     {
                         ReArrangePoints(cutPolygon);
                         polygons.Add(cutPolygon);
@@ -420,48 +421,48 @@ namespace LibGemcadFileReader.Concrete
             }
         }
 
-        private List<Vertex3D> CutPolygonByPlane(Polygon pg, GemCadFileTierIndexData tierIndex)
+        private List<Vertex3D> CutPolygonByPlane(Polygon polygon, GemCadFileTierIndexData tierIndex)
         {
-            var crossPt = new List<Vertex3D>();
-            Vertex3D g0, g1, p;
-            double cx, cy, cz;
-            p = tierIndex.FacetPoint.Clone<Vertex3D>();
-            double delta, d;
+            var crossPoints = new List<Vertex3D>();
+            var planePoint = tierIndex.FacetPoint;
+
+            //logger.Debug($"Polygon Point Count={pg.Vertices.Count}");
+
             int i = 0;
-
-            logger.Debug($"Polygon Point Count={pg.VertexCount}");
-
             while (true)
             {
-                g0 = pg[i].Vertex;
-                if (i == pg.VertexCount - 1)
+                var fp1 = polygon.Vertices[i].Vertex;
+                Vertex3D fp2;
+                if (i == polygon.Vertices.Count - 1)
                 {
-                    g1 = pg[0].Vertex;
+                    fp2 = polygon.Vertices[0].Vertex;
                 }
                 else
                 {
-                    g1 = pg[i + 1].Vertex;
+                    fp2 = polygon.Vertices[i + 1].Vertex;
                 }
 
-                d = p.X * (g1.X - g0.X) + p.Y * (g1.Y - g0.Y) + p.Z * (g1.Z - g0.Z);
+                var d = planePoint.X * (fp2.X - fp1.X) + planePoint.Y * (fp2.Y - fp1.Y) + planePoint.Z * (fp2.Z - fp1.Z);
 
                 if (Math.Abs(d) > Constants.Tolerance)
                 {
-                    delta = (p.X * (p.X - g0.X) + p.Y * (p.Y - g0.Y) + p.Z * (p.Z - g0.Z)) / d;
+                    var delta = (planePoint.X * (planePoint.X - fp1.X) + planePoint.Y * (planePoint.Y - fp1.Y) + planePoint.Z * (planePoint.Z - fp1.Z)) / d;
                     if (Math.Abs(delta) < Constants.Tolerance)
+                    {
                         delta = 0;
+                    }
 
-                    cx = g0.X + (g1.X - g0.X) * delta;
-                    cy = g0.Y + (g1.Y - g0.Y) * delta;
-                    cz = g0.Z + (g1.Z - g0.Z) * delta;
+                    var cx = fp1.X + (fp2.X - fp1.X) * delta;
+                    var cy = fp1.Y + (fp2.Y - fp1.Y) * delta;
+                    var cz = fp1.Z + (fp2.Z - fp1.Z) * delta;
 
                     if (delta >= 0 && delta <= 1)
                     {
-                        var pt = new Vertex3D(cx, cy, cz);
+                        var crossPoint = new Vertex3D(cx, cy, cz);
                         bool alreadyExists = false;
-                        for (int j = 0; j < crossPt.Count; j++)
+                        for (int j = 0; j < crossPoints.Count; j++)
                         {
-                            if (IsSamePoint(pt, crossPt[j]))
+                            if (IsSamePoint(crossPoint, crossPoints[j]))
                             {
                                 alreadyExists = true;
                                 break;
@@ -470,45 +471,46 @@ namespace LibGemcadFileReader.Concrete
 
                         if (!alreadyExists)
                         {
-                            logger.Debug(
-                                $"Cross Point: {cx},{cy},{cz}  g0: {g0.X},{g0.Y},{g0.Z}  g1: {g1.X},{g1.Y},{g1.Z}  delta: {delta}");
-                            crossPt.Add(pt);
+                            //logger.Debug($"Cross Point: {cx},{cy},{cz}  g0: {g0.X},{g0.Y},{g0.Z}  g1: {g1.X},{g1.Y},{g1.Z}  delta: {delta}");
+                            crossPoints.Add(crossPoint);
                         }
                     }
                 }
 
                 i++;
-                if (i == pg.VertexCount)
+                if (i == polygon.Vertices.Count)
                 {
                     break;
                 }
             }
 
-            i = pg.VertexCount - 1;
+            i = polygon.Vertices.Count - 1;
 
             while (true)
             {
-                g1 = pg[i].Vertex;
+                var fp1 = polygon.Vertices[i].Vertex;
 
-                d = p.X * (g1.X - p.X) + p.Y * (g1.Y - p.Y) + p.Z * (g1.Z - p.Z);
+                var d = planePoint.X * (fp1.X - planePoint.X) + planePoint.Y * (fp1.Y - planePoint.Y) + planePoint.Z * (fp1.Z - planePoint.Z);
 
                 if (d > 0)
                 {
-                    pg.RemoveAt(i);
+                    polygon.RemoveAt(i);
                 }
 
                 i--;
                 if (i == -1)
+                {
                     break;
+                }
             }
 
-            for (i = 0; i < crossPt.Count; i++)
+            for (i = 0; i < crossPoints.Count; i++)
             {
-                p = crossPt[i];
+                planePoint = crossPoints[i];
                 bool alreadyExists = false;
-                for (int j = 0; j < pg.VertexCount; j++)
+                for (int j = 0; j < polygon.Vertices.Count; j++)
                 {
-                    if (IsSamePoint(p, pg[j].Vertex))
+                    if (IsSamePoint(planePoint, polygon.Vertices[j].Vertex))
                     {
                         alreadyExists = true;
                         break;
@@ -517,27 +519,28 @@ namespace LibGemcadFileReader.Concrete
 
                 if (!alreadyExists)
                 {
-                    pg.Add(new PolygonVertex(new Vertex3D(p.X, p.Y, p.Z)));
+                    polygon.Add(new PolygonVertex(new Vertex3D(planePoint.X, planePoint.Y, planePoint.Z)));
                 }
             }
 
-            if (pg.VertexCount > 3)
-                ReArrangePoints(pg);
-            return crossPt;
+            if (polygon.Vertices.Count > 3)
+            {
+                ReArrangePoints(polygon);
+            }
+
+            return crossPoints;
         }
 
         private void ProcessPolygons(GemCadFileData fileData)
         {
             for (int i = 0; i < fileData.FacetPolygons.Count; i++)
             {
-                logger.Debug(
-                    $"[ASCIMPORT] Convert polygon to triangle - Point Count: {fileData.FacetPolygons[i].VertexCount}");
-                for (int j = 1; j < fileData.FacetPolygons[i].VertexCount - 1; j++)
+                for (int j = 1; j < fileData.FacetPolygons[i].Vertices.Count - 1; j++)
                 {
                     var triangle = new Triangle();
-                    triangle.P1 = fileData.FacetPolygons[i][0];
-                    triangle.P2 = fileData.FacetPolygons[i][j];
-                    triangle.P3 = fileData.FacetPolygons[i][j + 1];
+                    triangle.P1 = fileData.FacetPolygons[i].Vertices[0];
+                    triangle.P2 = fileData.FacetPolygons[i].Vertices[j];
+                    triangle.P3 = fileData.FacetPolygons[i].Vertices[j + 1];
 
                     // Don't assume the winding is correct, because it's probably not for half the polys.
                     // Check both directions, and take the normal with the end furthest from 0,0,0
@@ -553,7 +556,7 @@ namespace LibGemcadFileReader.Concrete
                     var normalEnd2 = vectorOperations.Add(normal2, triangle.P1.Vertex);
                     var dist2 = geometryOperations.Length3d(normalEnd2, new Vertex3D());
 
-                    logger.Debug($"[ASCIMPORT] N1D={dist1} N2D={dist2}");
+                    //logger.Debug($"[ASCIMPORT] N1D={dist1} N2D={dist2}");
 
                     if (Math.Abs(dist2) > Math.Abs(dist1))
                     {
@@ -571,46 +574,59 @@ namespace LibGemcadFileReader.Concrete
                     fileData.RenderingTriangles.Add(triangle);
                 }
             }
+
+            var startingCount = fileData.RenderingTriangles.Count;
+            fileData.RenderingTriangles = subdivisionProvider.Subdivide(fileData.RenderingTriangles, 1).ToList();
+            logger.Debug(
+                $"[ASCIMPORT] Converted {fileData.FacetPolygons.Count} facet polygons to {startingCount} triangles, and subdivided to {fileData.RenderingTriangles.Count} triangles for rendering.");            
         }
 
         private void ReArrangePoints(Polygon polygon)
         {
-            var vertices = polygon.ToList();
-
-            if (vertices.Count() < 4)
+            if (polygon.Vertices.Count < 4)
+            {
                 return;
+            }
+            
+            var vertices = polygon.Vertices.ToList();
 
-            int i, j, maxIndex = 0;
-            Vertex3D p0 = vertices[0].Vertex;
-            Vertex3D p1, p2;
-
+            int maxIndex = 0;
+            
+            Vertex3D point1 = vertices[0].Vertex;
+            Vertex3D point2, point3;
             Vertex3D g0, g1;
-            List<Vertex3D> lstPoints = new List<Vertex3D>();
-            for (i = 0; i < vertices.Count(); i++)
-                lstPoints.Add(new Vertex3D());
-            lstPoints[0] = p0;
+            
+            var reorderedPointList = new List<Vertex3D>();
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                reorderedPointList.Add(new Vertex3D());
+            }
 
-            double angle, maxAngle;
-            List<double> dAngles = new List<double>();
+            reorderedPointList[0] = point1;
+
+            double maxAngle;
+            var dAngles = new List<double>();
             dAngles.Add(0);
 
-            for (i = 1; i < vertices.Count(); i++)
+            for (int i = 1; i < vertices.Count; i++)
             {
-                p1 = vertices[i].Vertex;
+                point2 = vertices[i].Vertex;
                 maxAngle = 0;
-                for (j = 1; j < vertices.Count(); j++)
+                for (int j = 1; j < vertices.Count; j++)
                 {
                     if (i != j)
                     {
-                        p2 = vertices[j].Vertex;
+                        point3 = vertices[j].Vertex;
 
-                        g0 = new Vertex3D(p1.X - p0.X, p1.Y - p0.Y, p1.Z - p0.Z);
-                        g1 = new Vertex3D(p2.X - p0.X, p2.Y - p0.Y, p2.Z - p0.Z);
+                        g0 = new Vertex3D(point2.X - point1.X, point2.Y - point1.Y, point2.Z - point1.Z);
+                        g1 = new Vertex3D(point3.X - point1.X, point3.Y - point1.Y, point3.Z - point1.Z);
 
-                        angle = AngleBetween(g0, g1);
+                        var angle = AngleBetween(g0, g1);
 
                         if (maxAngle < angle)
+                        {
                             maxAngle = angle;
+                        }
                     }
                 }
 
@@ -619,7 +635,7 @@ namespace LibGemcadFileReader.Concrete
 
             maxAngle = 0;
 
-            for (i = 1; i < dAngles.Count(); i++)
+            for (int i = 1; i < dAngles.Count; i++)
             {
                 if (maxAngle < dAngles[i])
                 {
@@ -628,39 +644,39 @@ namespace LibGemcadFileReader.Concrete
                 }
             }
 
-            p1 = vertices[maxIndex].Vertex;
-            lstPoints[1] = p1;
+            point2 = vertices[maxIndex].Vertex;
+            reorderedPointList[1] = point2;
             dAngles.Clear();
             dAngles.Add(-1);
 
-            for (i = 1; i < vertices.Count(); i++)
+            for (int i = 1; i < vertices.Count; i++)
             {
-                p2 = vertices[i].Vertex;
-                g0 = new Vertex3D(p1.X - p0.X, p1.Y - p0.Y, p1.Z - p0.Z);
-                g1 = new Vertex3D(p2.X - p0.X, p2.Y - p0.Y, p2.Z - p0.Z);
+                point3 = vertices[i].Vertex;
+                g0 = new Vertex3D(point2.X - point1.X, point2.Y - point1.Y, point2.Z - point1.Z);
+                g1 = new Vertex3D(point3.X - point1.X, point3.Y - point1.Y, point3.Z - point1.Z);
 
-                angle = AngleBetween(g0, g1);
+                var angle = AngleBetween(g0, g1);
                 dAngles.Add(angle);
             }
 
             int nLows;
 
-            for (i = 1; i < dAngles.Count(); i++)
+            for (int i = 1; i < dAngles.Count; i++)
             {
                 if (i != maxIndex)
                 {
                     nLows = 0;
-                    for (j = 0; j < dAngles.Count(); j++)
+                    for (int j = 0; j < dAngles.Count; j++)
                     {
                         if (dAngles[j] < dAngles[i])
                             nLows++;
                     }
 
-                    lstPoints[nLows] = vertices[i].Vertex;
+                    reorderedPointList[nLows] = vertices[i].Vertex;
                 }
             }
 
-            polygon.Replace(lstPoints.Select(x => new PolygonVertex(x)).ToArray());
+            polygon.Replace(reorderedPointList.Select(x => new PolygonVertex(x)).ToArray());
         }
 
         private double AngleBetween(Vertex3D p1, Vertex3D p2)
@@ -670,14 +686,7 @@ namespace LibGemcadFileReader.Concrete
 
         private bool IsSamePoint(Vertex3D pt1, Vertex3D pt2)
         {
-            bool bIsSame = false;
-            double dis = Math.Sqrt(Math.Pow(pt1.X - pt2.X, 2.0) +
-                                   Math.Pow(pt1.Y - pt2.Y, 2.0) +
-                                   Math.Pow(pt1.Z - pt2.Z, 2.0));
-            if (dis < Constants.Tolerance)
-                bIsSame = true;
-
-            return bIsSame;
+            return Math.Abs(geometryOperations.Length3d(pt1, pt2)) < Constants.Tolerance;
         }
     }
 }
