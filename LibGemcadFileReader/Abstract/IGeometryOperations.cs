@@ -10,5 +10,6 @@ namespace LibGemcadFileReader.Abstract
         double TrueAngleBetweenVectors(Vertex3D p1, Vertex3D p2, Vertex3D p3);
         double GetAngle2d(Vertex3D p1, Vertex3D p2);
         Vertex3D ProjectPointAlongVector(Vertex3D p1, Vertex3D p2, double distance);
+        Triangle CreateTriangleFromPoints(Vertex3D p1, Vertex3D p2, Vertex3D p3, bool ensureWindingOrder);
     }
 }

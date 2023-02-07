@@ -25,5 +25,6 @@ namespace LibGemcadFileReader.Abstract
         double Length(Vertex3D p);
 
         double AngleBetween(Vertex3D p1, Vertex3D p2);
+        Vertex3D FindRayPlaneIntersection(Vertex3D rayOrigin, Vertex3D rayDirection, Triangle plane);
     }
 }

@@ -6,14 +6,20 @@ namespace LibGemcadFileReader
     {
         public static double FilterAngle(double angle)
         {
-            double result = angle;
-            while (result > 360)
+            return ClockN(angle, 360.0);
+        }
+        
+        public static double ClockN(double value, double basis)
+        {
+            basis = Math.Abs(basis);
+            double result = value;
+            while (result > basis)
             {
-                result -= 360;
+                result -= basis;
             }
-            while (result < -360)
+            while (result < -basis)
             {
-                result += 360;
+                result += basis;
             }
             if (Math.Abs(result) < 0.00000001)
             {

@@ -7,6 +7,13 @@ namespace LibGemcadFileReader.Concrete
 
     public class GeometryOperations : IGeometryOperations
     {
+        private readonly IVectorOperations vectorOperations;
+        
+        public GeometryOperations(IVectorOperations vectorOperations)
+        {
+            this.vectorOperations = vectorOperations;
+        }
+        
         public double Length3d(Vertex3D p1, Vertex3D p2)
         {
             double x = Math.Pow(p2.X - p1.X, 2);
@@ -133,5 +140,52 @@ namespace LibGemcadFileReader.Concrete
 
             return result;
         }
+        
+        public Triangle CreateTriangleFromPoints(Vertex3D p1, Vertex3D p2, Vertex3D p3, bool ensureWindingOrder)
+        {
+            var triangle = new Triangle();
+            triangle.P1 = new PolygonVertex(p1);
+            triangle.P2 = new PolygonVertex(p2);
+            triangle.P3 = new PolygonVertex(p3);
+
+            if (ensureWindingOrder)
+            {
+                // Don't assume the winding is correct, because it's probably not for half the polys.
+                // Check both directions, and take the normal with the end furthest from 0,0,0
+                var normal1 =
+                    vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex,
+                        triangle.P3.Vertex);
+                var normalEnd1 = vectorOperations.Add(normal1, triangle.P1.Vertex);
+                var dist1 = Length3d(normalEnd1, new Vertex3D());
+
+                var normal2 =
+                    vectorOperations.CalculateNormal(triangle.P3.Vertex, triangle.P2.Vertex,
+                        triangle.P1.Vertex);
+                var normalEnd2 = vectorOperations.Add(normal2, triangle.P1.Vertex);
+                var dist2 = Length3d(normalEnd2, new Vertex3D());
+                
+                if (Math.Abs(dist2) > Math.Abs(dist1))
+                {
+                    triangle.Reverse();
+                    triangle.Normal = normal2;
+                }
+                else
+                {
+                    triangle.Normal = normal1;
+                }
+            }
+            else
+            {
+                var normal =
+                    vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex, triangle.P3.Vertex);
+                triangle.Normal = vectorOperations.Add(normal, triangle.P1.Vertex);                
+            }
+
+            triangle.P1.Normal = triangle.Normal;
+            triangle.P2.Normal = triangle.Normal;
+            triangle.P3.Normal = triangle.Normal;
+
+            return triangle;
+        }  
     }
 }

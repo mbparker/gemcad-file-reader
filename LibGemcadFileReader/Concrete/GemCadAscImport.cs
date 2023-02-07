@@ -72,6 +72,18 @@ namespace LibGemcadFileReader.Concrete
                             fileData.Metadata.GearLocationAngle = gearLocation;
                         }
                     }
+                } else if (parts[0] == "y")
+                {
+                    if (parts.Length == 3)
+                    {
+                        if (int.TryParse(parts[1], out int symmetryFolds))
+                        {
+                            string symmetryMirror = parts[2].Trim();
+                            logger.Debug($"[ASCIMPORT] Read symmetry {symmetryFolds} {symmetryMirror}");
+                            fileData.Metadata.SymmetryFolds = symmetryFolds;
+                            fileData.Metadata.SymmetryMirror = string.Equals(symmetryMirror, "y", StringComparison.InvariantCultureIgnoreCase);
+                        }
+                    }
                 }
                 else if (parts[0] == "I")
                 {
@@ -180,8 +192,8 @@ namespace LibGemcadFileReader.Concrete
         private void BuildGeometry(GemCadFileData fileData)
         {
             GenerateCutPlanes(fileData.Metadata.Gear, fileData.Metadata.GearLocationAngle, fileData.Tiers);
-            fileData.FacetPolygons.AddRange(GenerateRoughCube());
-            PerformCutsOnRoughCube(fileData.FacetPolygons, fileData.Tiers);
+            var roughCube = new List<Polygon>(GenerateRoughCube());
+            PerformCutsOnRoughCube(roughCube, fileData.Tiers);
             ProcessPolygons(fileData);
         }
 
@@ -204,7 +216,7 @@ namespace LibGemcadFileReader.Concrete
                     var rollAngle = tier.Indices[j].Index * stepAngle;
                     pt = geometryOperations.RotatePoint(pt, 0, 0, pitchAngle, origin);
                     pt = geometryOperations.RotatePoint(pt, 0,  MathUtils.FilterAngle(rollAngle - rollAngleOffset), 0, origin);
-                    tier.Indices[j].FacetPoint = pt;
+                    tier.Indices[j].FacetNormal = geometryOperations.ProjectPointAlongVector(pt, origin, -3.0);
                 }
             }
         }
@@ -351,8 +363,11 @@ namespace LibGemcadFileReader.Concrete
             quad.Vertices[0].Vertex.Z = -sizeDiv2;
         }
 
-        private void PerformCutsOnRoughCube(List<Polygon> polygons, IReadOnlyList<GemCadFileTierData> tiers)
+        private void PerformCutsOnRoughCube(IReadOnlyList<Polygon> roughCube, IReadOnlyList<GemCadFileTierData> tiers)
         {
+            var polygons = new List<Polygon>(roughCube);
+            var map = new List<Tuple<int, int, Polygon>>();
+
             for (int h = 0; h < tiers.Count; h++)
             {
                 var tier = tiers[h];
@@ -416,15 +431,23 @@ namespace LibGemcadFileReader.Concrete
                     {
                         ReArrangePoints(cutPolygon);
                         polygons.Add(cutPolygon);
+                        map.Add(new Tuple<int, int, Polygon>(h, i, cutPolygon));
                     }
                 }
+            }
+
+            foreach (var mapItem in map)
+            {
+                tiers[mapItem.Item1].Indices[mapItem.Item2].Points =
+                    mapItem.Item3.Vertices.Select(x => x.Vertex).ToList();
             }
         }
 
         private List<Vertex3D> CutPolygonByPlane(Polygon polygon, GemCadFileTierIndexData tierIndex)
         {
             var crossPoints = new List<Vertex3D>();
-            var planePoint = tierIndex.FacetPoint;
+            var planeNormal = tierIndex.FacetNormal;
+            var planePoint = geometryOperations.ProjectPointAlongVector(planeNormal, new Vertex3D(), 3.0);
 
             //logger.Debug($"Polygon Point Count={pg.Vertices.Count}");
 
@@ -442,11 +465,11 @@ namespace LibGemcadFileReader.Concrete
                     fp2 = polygon.Vertices[i + 1].Vertex;
                 }
 
-                var d = planePoint.X * (fp2.X - fp1.X) + planePoint.Y * (fp2.Y - fp1.Y) + planePoint.Z * (fp2.Z - fp1.Z);
+                var d = planeNormal.X * (fp2.X - fp1.X) + planeNormal.Y * (fp2.Y - fp1.Y) + planeNormal.Z * (fp2.Z - fp1.Z);
 
                 if (Math.Abs(d) > Constants.Tolerance)
                 {
-                    var delta = (planePoint.X * (planePoint.X - fp1.X) + planePoint.Y * (planePoint.Y - fp1.Y) + planePoint.Z * (planePoint.Z - fp1.Z)) / d;
+                    var delta = (planeNormal.X * (planePoint.X - fp1.X) + planeNormal.Y * (planePoint.Y - fp1.Y) + planeNormal.Z * (planePoint.Z - fp1.Z)) / d;
                     if (Math.Abs(delta) < Constants.Tolerance)
                     {
                         delta = 0;
@@ -490,7 +513,7 @@ namespace LibGemcadFileReader.Concrete
             {
                 var fp1 = polygon.Vertices[i].Vertex;
 
-                var d = planePoint.X * (fp1.X - planePoint.X) + planePoint.Y * (fp1.Y - planePoint.Y) + planePoint.Z * (fp1.Z - planePoint.Z);
+                var d = planeNormal.X * (fp1.X - planePoint.X) + planeNormal.Y * (fp1.Y - planePoint.Y) + planeNormal.Z * (fp1.Z - planePoint.Z);
 
                 if (d > 0)
                 {
@@ -531,54 +554,39 @@ namespace LibGemcadFileReader.Concrete
             return crossPoints;
         }
 
-        private void ProcessPolygons(GemCadFileData fileData)
+        private void ProcessPolygons(GemCadFileData data)
         {
-            for (int i = 0; i < fileData.FacetPolygons.Count; i++)
+            int startingTriangleCount = 0;
+            int endingTriangleCount = 0;
+            for (int i = 0; i < data.Tiers.Count; i++)
             {
-                for (int j = 1; j < fileData.FacetPolygons[i].Vertices.Count - 1; j++)
+                for (int j = 0; j < data.Tiers[i].Indices.Count; j++)
                 {
-                    var triangle = new Triangle();
-                    triangle.P1 = fileData.FacetPolygons[i].Vertices[0];
-                    triangle.P2 = fileData.FacetPolygons[i].Vertices[j];
-                    triangle.P3 = fileData.FacetPolygons[i].Vertices[j + 1];
-
-                    // Don't assume the winding is correct, because it's probably not for half the polys.
-                    // Check both directions, and take the normal with the end furthest from 0,0,0
-                    var normal1 =
-                        vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex,
-                            triangle.P3.Vertex);
-                    var normalEnd1 = vectorOperations.Add(normal1, triangle.P1.Vertex);
-                    var dist1 = geometryOperations.Length3d(normalEnd1, new Vertex3D());
-
-                    var normal2 =
-                        vectorOperations.CalculateNormal(triangle.P3.Vertex, triangle.P2.Vertex,
-                            triangle.P1.Vertex);
-                    var normalEnd2 = vectorOperations.Add(normal2, triangle.P1.Vertex);
-                    var dist2 = geometryOperations.Length3d(normalEnd2, new Vertex3D());
-
-                    //logger.Debug($"[ASCIMPORT] N1D={dist1} N2D={dist2}");
-
-                    if (Math.Abs(dist2) > Math.Abs(dist1))
+                    var index = data.Tiers[i].Indices[j];
+                    var triangles = ConvertCoplanarPointsToTriangles(index.Points);
+                    if (triangles.Any())
                     {
-                        triangle.Reverse();
-                        triangle.Normal = normal2;
+                        startingTriangleCount += triangles.Count;
+                        index.RenderingTriangles = subdivisionProvider.Subdivide(triangles, 1).ToList();
+                        endingTriangleCount += index.RenderingTriangles.Count;
                     }
-                    else
-                    {
-                        triangle.Normal = normal1;
-                    }
-
-                    triangle.P1.Normal = triangle.Normal;
-                    triangle.P2.Normal = triangle.Normal;
-                    triangle.P3.Normal = triangle.Normal;
-                    fileData.RenderingTriangles.Add(triangle);
                 }
             }
-
-            var startingCount = fileData.RenderingTriangles.Count;
-            fileData.RenderingTriangles = subdivisionProvider.Subdivide(fileData.RenderingTriangles, 1).ToList();
+            
             logger.Debug(
-                $"[ASCIMPORT] Converted {fileData.FacetPolygons.Count} facet polygons to {startingCount} triangles, and subdivided to {fileData.RenderingTriangles.Count} triangles for rendering.");            
+                $"[GEMIMPORT] Subdivided {startingTriangleCount} triangles to {endingTriangleCount} triangles for rendering.");
+        }
+
+        private IReadOnlyList<Triangle> ConvertCoplanarPointsToTriangles(IReadOnlyList<Vertex3D> points)
+        {
+            var result = new List<Triangle>();
+            for (int i = 1; i < points.Count - 1; i++)
+            {
+                var triangle = geometryOperations.CreateTriangleFromPoints(points[0], points[i], points[i + 1], true);
+                result.Add(triangle);
+            }
+
+            return result;
         }
 
         private void ReArrangePoints(Polygon polygon)

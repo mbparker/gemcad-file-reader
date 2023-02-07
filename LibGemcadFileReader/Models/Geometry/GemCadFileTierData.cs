@@ -5,6 +5,7 @@ namespace LibGemcadFileReader.Models.Geometry
 {
     public class GemCadFileTierData
     {
+        public bool IsPreform { get; set; }
         public int Number { get; set; }
         public double Angle { get; set; }
         public double Distance { get; set; }

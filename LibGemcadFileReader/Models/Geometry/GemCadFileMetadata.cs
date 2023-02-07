@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace LibGemcadFileReader.Models.Geometry
@@ -8,14 +7,9 @@ namespace LibGemcadFileReader.Models.Geometry
         public int Gear { get; set; }
         public double GearLocationAngle { get; set; }
         public double RefractiveIndex { get; set; }
+        public int SymmetryFolds { get; set; }
+        public bool SymmetryMirror { get; set; }
         public List<string> Headers { get; set; } = new List<string>();
         public List<string> Footnotes { get; set; } = new List<string>();
-            
-        // These fields are only applicable when parsing the binary format files (*.GEM)
-        public int Unknown1 { get; set; }
-        public byte[] Unknown2 { get; set; } = Array.Empty<byte>();
-        public int Unknown3 { get; set; }
-        public int Unknown4 { get; set; }
-        public int Unknown5 { get; set; }  
     }
 }

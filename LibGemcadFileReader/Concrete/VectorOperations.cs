@@ -102,5 +102,14 @@ namespace LibGemcadFileReader.Concrete
                 ? 2.0 * Math.Asin(Length(Subtract(p1, p2)) / 2.0)
                 : Math.PI - 2.0 * Math.Asin(Length(Subtract(Negative(p1), p2)) / 2.0)) * (180.0 / Math.PI);
         }
+        
+        public Vertex3D FindRayPlaneIntersection(Vertex3D rayOrigin, Vertex3D rayDirection, Triangle plane)
+        {
+            var diff = Subtract(rayOrigin, plane.P1.Vertex);
+            var prod1 = DotProduct(diff, plane.Normal);
+            var prod2 = DotProduct(rayDirection, plane.Normal);
+            var prod3 = prod1 / prod2;
+            return MultiplyScalar(Subtract(rayOrigin, rayDirection), prod3);
+        } 
     }
 }
