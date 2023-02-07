@@ -70,7 +70,7 @@ namespace LibGemcadFileReader.Concrete
             var vp2 = new Vertex3D();
             var vp3 = new Vertex3D { X = 25 };
 
-            double angle = TrueAngleBetweenVectors(vp1, vp2, vp3);
+            double angle = AngleBetweenConnectedVectors(vp1, vp2, vp3);
 
             if (vp1.Y < 0)
             {
@@ -80,7 +80,7 @@ namespace LibGemcadFileReader.Concrete
             return 180 - angle;
         }
         
-        public double TrueAngleBetweenVectors(Vertex3D p1, Vertex3D p2, Vertex3D p3)
+        public double AngleBetweenConnectedVectors(Vertex3D p1, Vertex3D p2, Vertex3D p3)
         {
             double tb3 = 0;
             double a = Length3d(p1, p2);

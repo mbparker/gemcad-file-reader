@@ -78,7 +78,7 @@ namespace LibGemcadFileReader.Concrete
                         }
                         else
                         {
-                            angle = MathUtils.FilterAngle(geometryOperations.TrueAngleBetweenVectors(index.FacetNormal,
+                            angle = MathUtils.FilterAngle(geometryOperations.AngleBetweenConnectedVectors(index.FacetNormal,
                                 origin,
                                 new Vertex3D(index.FacetNormal.X, index.FacetNormal.Y, 0)) - 90);
                             if (index.FacetNormal.Z < 0)
