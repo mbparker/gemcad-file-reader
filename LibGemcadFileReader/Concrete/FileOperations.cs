@@ -14,5 +14,15 @@ namespace LibGemcadFileReader.Concrete
         {
             return File.Exists(path);
         }
+
+        public string CreateTempFilename()
+        {
+            return Path.GetTempFileName();
+        }
+
+        public void DeleteFile(string path)
+        {
+            File.Delete(path);
+        }
     }
 }

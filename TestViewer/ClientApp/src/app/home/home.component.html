@@ -1,0 +1,11 @@
+<div style="display: flex; flex-direction: column; height: 100%; width: 100%">
+  <div style="flex: 0 0 auto; margin: 1rem">
+    <div style="display: flex; flex-direction: row">
+      <input type="file" #file placeholder="Choose File" (change)="loadFile(file.files)" style="display:none;">
+      <button type="button" class="btn btn-success" (click)="file.click()">Open .GEM or .ASC File</button>
+    </div>
+  </div>
+  <div style="flex: 1 0 auto; overflow: auto">
+    <div id="renderer-host" style="height: 100%; width: 100%; overflow: hidden;"></div>
+  </div>
+</div>
