@@ -176,9 +176,8 @@ namespace LibGemcadFileReader.Concrete
             }
             else
             {
-                var normal =
+                triangle.Normal =
                     vectorOperations.CalculateNormal(triangle.P1.Vertex, triangle.P2.Vertex, triangle.P3.Vertex);
-                triangle.Normal = vectorOperations.Add(normal, triangle.P1.Vertex);                
             }
 
             triangle.P1.Normal = triangle.Normal;
